@@ -1,0 +1,123 @@
+diff --git a/include/rex/ui/vulkan/device_order.h b/include/rex/ui/vulkan/device_order.h
+new file mode 100644
+index 0000000..7adb300
+--- /dev/null
++++ b/include/rex/ui/vulkan/device_order.h
+@@ -0,0 +1,57 @@
++/**
++ * @file        ui/vulkan/device_order.h
++ * @brief       Which Vulkan physical device automatic selection tries first
++ *
++ * Features decide first, as they always have. Between equally capable devices a discrete GPU comes
++ * first: on a hybrid laptop the integrated GPU is usually enumerated first and has the same
++ * features, so the game ran on it. A device that fails to initialize still falls through to the
++ * next one.
++ *
++ * @license     BSD 3-Clause License
++ *              See LICENSE file in the project root for full license text.
++ */
++#pragma once
++
++#include <algorithm>
++#include <cstdint>
++#include <vector>
++
++#include <rex/ui/vulkan/api.h>
++
++namespace rex::ui::vulkan {
++
++constexpr uint32_t DeviceTypeRank(VkPhysicalDeviceType type) {
++  switch (type) {
++    case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
++      return 0;
++    case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
++      return 1;
++    case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
++      return 2;
++    case VK_PHYSICAL_DEVICE_TYPE_CPU:
++      return 4;
++    default:
++      return 3;
++  }
++}
++
++template <typename Device>
++struct DeviceCandidate {
++  Device device;
++  uint32_t feature_score;
++  VkPhysicalDeviceType type;
++};
++
++// Most preferred features first, then by device type. Complete ties keep enumeration order.
++template <typename Device>
++void OrderDeviceCandidates(std::vector<DeviceCandidate<Device>>& candidates) {
++  std::stable_sort(candidates.begin(), candidates.end(),
++                   [](const DeviceCandidate<Device>& a, const DeviceCandidate<Device>& b) {
++                     if (a.feature_score != b.feature_score) {
++                       return a.feature_score > b.feature_score;
++                     }
++                     return DeviceTypeRank(a.type) < DeviceTypeRank(b.type);
++                   });
++}
++
++}  // namespace rex::ui::vulkan
+diff --git a/src/ui/vulkan/vulkan_provider.cpp b/src/ui/vulkan/vulkan_provider.cpp
+index 9eeb902..b8cfefa 100644
+--- a/src/ui/vulkan/vulkan_provider.cpp
++++ b/src/ui/vulkan/vulkan_provider.cpp
+@@ -14,6 +14,7 @@
+ 
+ #include <rex/cvar.h>
+ #include <rex/logging.h>
++#include <rex/ui/vulkan/device_order.h>
+ #include <rex/ui/vulkan/immediate_drawer.h>
+ #include <rex/ui/vulkan/presenter.h>
+ #include <rex/ui/vulkan/provider.h>
+@@ -88,16 +89,12 @@ std::unique_ptr<VulkanProvider> VulkanProvider::Create(const bool with_gpu_emula
+     bool prefer_fragment_stores = REXCVAR_GET(vulkan_prefer_fragment_stores_and_atomics);
+     bool prefer_vertex_stores = REXCVAR_GET(vulkan_prefer_vertex_pipeline_stores_and_atomics);
+     bool prefer_fill_mode_non_solid = REXCVAR_GET(vulkan_prefer_fill_mode_non_solid);
+-    if (with_gpu_emulation && physical_devices.size() > 1 &&
+-        (prefer_geometry_shader || prefer_fragment_stores || prefer_vertex_stores ||
+-         prefer_fill_mode_non_solid)) {
+-      struct PhysicalDeviceScore {
+-        VkPhysicalDevice physical_device;
+-        uint32_t score;
+-      };
+-      std::vector<PhysicalDeviceScore> scored_devices;
+-      scored_devices.reserve(physical_devices.size());
++    if (with_gpu_emulation && physical_devices.size() > 1) {
++      std::vector<DeviceCandidate<VkPhysicalDevice>> candidates;
++      candidates.reserve(physical_devices.size());
+       for (const VkPhysicalDevice physical_device : physical_devices) {
++        VkPhysicalDeviceProperties properties = {};
++        ifn.vkGetPhysicalDeviceProperties(physical_device, &properties);
+         VkPhysicalDeviceFeatures supported_features = {};
+         ifn.vkGetPhysicalDeviceFeatures(physical_device, &supported_features);
+         uint32_t score = 0;
+@@ -113,20 +110,14 @@ std::unique_ptr<VulkanProvider> VulkanProvider::Create(const bool with_gpu_emula
+         if (prefer_fill_mode_non_solid && supported_features.fillModeNonSolid) {
+           ++score;
+         }
+-        scored_devices.push_back({physical_device, score});
++        candidates.push_back({physical_device, score, properties.deviceType});
+       }
+ 
+-      std::stable_sort(scored_devices.begin(), scored_devices.end(),
+-                       [](const PhysicalDeviceScore& a, const PhysicalDeviceScore& b) {
+-                         return a.score > b.score;
+-                       });
++      OrderDeviceCandidates(candidates);
+ 
+-      if (!scored_devices.empty() && scored_devices.front().score != scored_devices.back().score) {
+-        physical_devices_ordered.clear();
+-        physical_devices_ordered.reserve(scored_devices.size());
+-        for (const PhysicalDeviceScore& scored_device : scored_devices) {
+-          physical_devices_ordered.push_back(scored_device.physical_device);
+-        }
++      physical_devices_ordered.clear();
++      for (const DeviceCandidate<VkPhysicalDevice>& candidate : candidates) {
++        physical_devices_ordered.push_back(candidate.device);
+       }
+     }
+ 
