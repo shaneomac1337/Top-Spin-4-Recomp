@@ -6,6 +6,17 @@ before starting.
 
 ## Next
 
+- **Issue #3, Steam Deck court graphics.** Kiev is clean on Native at 2560x1440 on the RX 7900 XT.
+  Still to run: Seoul, then Seoul at `--ts4_native_window_size=1280x800`. If it shows, capture it in
+  RenderDoc; if not, ask the reporter for the session log and whether Classic shows it.
+- **Issue #2, two-GPU laptops.** Asked the reporter for the crash zip and a `REX_VULKAN_DEVICE=1`
+  run. The discrete-GPU fix is on `fix/prefer-discrete-gpu`, unconfirmed on a real hybrid laptop.
+- **Intermittent hang entering Swing.** Seen once in two 1.0.0 Native runs (2026-11-05): the main
+  thread spins in `sub_88291558` (from `sub_88292000`) right after
+  `SetInterruptCallback(88292A60, ...)`, polling what looks like the GPU's ring read position. The
+  next run got through. Leave it open if it recurs, and take stacks with `scripts\lldb.cmd`.
+- **`sdk_version` rewritten by the build.** `build.ps1 -Action Build` changed it to `1.0.0` in
+  `topspin4_manifest.toml`, though ReXGlue is 0.10.0. Don't commit it; the cause is unknown.
 - **Online play (issue #1).** Revive Player Match (`docs/goals.md`, After 1.0). WWE All Stars'
   online work is the starting point (`docs/adr/0021-online-play-revived.md` in that repo).
 - **Code-sign the release.** Defender's ML verdict that deleted XenosRecomp came from the game exe
