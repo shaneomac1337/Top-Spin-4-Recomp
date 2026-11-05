@@ -48,7 +48,7 @@ The Launcher's **Achievements** page lists every achievement on your disc. The o
 
 Open the Launcher and use **Safe start** under "Trouble starting?". It runs one session on the Classic renderer with every setting at the original game's behaviour, and leaves your Settings file unchanged.
 
-After a crash or a graphics failure the Launcher comes back with Safe start up front, and after a crash with **Open crash report** to attach to your issue.
+After a crash or a graphics failure the Launcher comes back with Safe start up front, and after a crash with **Open crash report** to attach to your issue. Attach the report before you use Safe start: the button goes away once a session closes normally. The report stays in the `logs` folder as `crash-*.zip`.
 
 ## Starting without the Launcher
 
@@ -56,4 +56,4 @@ After a crash or a graphics failure the Launcher comes back with Safe start up f
 
 ## Logs
 
-The Launcher's **Open logs** button opens the `logs` folder beside the game. Attach the newest log when you report a problem.
+The Launcher's **Open logs** button opens the `logs` folder beside the game. When you report a problem, attach the newest log from the session it happened in, and for a crash the newest `crash-*.zip`. If you used Safe start since then, the newest log is from Safe start, not from the problem.

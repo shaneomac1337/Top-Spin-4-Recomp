@@ -2,6 +2,16 @@
 
 All notable changes to this project are recorded here, in the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
 
+## [Unreleased]
+
+### Fixed
+
+- On a PC with two GPUs, such as a gaming laptop, the game picks the discrete card instead of the first one Windows lists, which was often the integrated one. The shaders' pipeline cache is rebuilt once on those PCs.
+
+### Changed
+
+- Help says to attach the crash report before using Safe start, and that the newest log may be Safe start's own.
+
 ## [1.0.0] - 2026-11-01
 
 ### Added

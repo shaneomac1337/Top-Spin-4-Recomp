@@ -184,7 +184,7 @@ The port is built on the game's final version: the disc's code with Title Update
 applied. Without the update it doesn't run.
 
 **Does it run on Steam Deck or Linux?**
-Not tested yet. The Steam Deck through Proton is planned for 1.0.
+Not tested yet. A Steam Deck pass through Proton is still to come.
 
 **Was AI used?**
 Yes, a lot. I'm a software engineer, and most of the code and the docs were written with

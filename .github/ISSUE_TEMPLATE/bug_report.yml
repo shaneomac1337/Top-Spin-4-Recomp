@@ -1,0 +1,49 @@
+name: Bug report
+description: Something crashes, looks wrong or doesn't work
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: What you did and what you saw. For graphics problems, add a screenshot and say which court or screen it was on.
+    validations:
+      required: true
+  - type: dropdown
+    id: renderer
+    attributes:
+      label: Renderer
+      options:
+        - Native
+        - Classic
+        - Don't know
+    validations:
+      required: true
+  - type: dropdown
+    id: classic
+    attributes:
+      label: Does it also happen on the Classic renderer?
+      description: Switch the renderer in Settings and try again.
+      options:
+        - "Yes"
+        - "No"
+        - Not tried
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: Windows version or Steam Deck, and your graphics card or cards.
+      placeholder: Windows 11, NVIDIA GeForce GTX 1660 Ti + Intel UHD Graphics 630
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Log and crash report
+      description: >-
+        Press Open logs in the Launcher and drag the files here: the log from the session with the
+        problem and, for a crash, the newest crash-*.zip. If you used Safe start since then, the
+        newest log is from Safe start, not from the problem.
+    validations:
+      required: true

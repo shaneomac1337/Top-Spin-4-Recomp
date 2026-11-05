@@ -6,6 +6,8 @@ before starting.
 
 ## Next
 
+- **Online play (issue #1).** Revive Player Match (`docs/goals.md`, After 1.0). WWE All Stars'
+  online work is the starting point (`docs/adr/0021-online-play-revived.md` in that repo).
 - **Code-sign the release.** Defender's ML verdict that deleted XenosRecomp came from the game exe
   having no version information (docs/research/defender-false-positive.md, fixed); a later build
   can still be flagged. Signing `topspin4.exe`, the Launcher and `XenosRecomp.exe` is the lasting fix.
