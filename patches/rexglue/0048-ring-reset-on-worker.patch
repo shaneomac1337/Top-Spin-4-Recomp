@@ -1,0 +1,142 @@
+diff --git a/include/rex/graphics/command_processor.h b/include/rex/graphics/command_processor.h
+index 7fb4524..dd1477c 100644
+--- a/include/rex/graphics/command_processor.h
++++ b/include/rex/graphics/command_processor.h
+@@ -255,6 +255,14 @@ class CommandProcessor {
+   uint32_t read_ptr_update_freq_ = 0;
+   uint32_t read_ptr_writeback_ptr_ = 0;
+ 
++  // A ring move from a guest thread, waiting for the worker (ApplyRingReset). The mutex guards the
++  // pending fields and read_ptr_writeback_ptr_.
++  void ApplyRingReset();
++  std::mutex ring_mutex_;
++  std::atomic<bool> ring_reset_pending_{false};
++  uint32_t pending_ring_ptr_ = 0;
++  uint32_t pending_ring_size_ = 0;
++
+   std::unique_ptr<rex::thread::Event> write_ptr_index_event_;
+   std::atomic<uint32_t> write_ptr_index_;
+ 
+diff --git a/src/graphics/command_processor.cpp b/src/graphics/command_processor.cpp
+index 1dbf8a2..e2cc65c 100644
+--- a/src/graphics/command_processor.cpp
++++ b/src/graphics/command_processor.cpp
+@@ -249,6 +249,8 @@ void CommandProcessor::WorkerThreadMain() {
+       fn();
+     }
+ 
++    ApplyRingReset();
++
+     uint32_t write_ptr_index = write_ptr_index_.load();
+     if (write_ptr_index == 0xBAADF00D || read_ptr_index_ == write_ptr_index) {
+       SCOPE_profile_cpu_i("gpu", "rex::graphics::CommandProcessor::Stall");
+@@ -268,13 +270,18 @@ void CommandProcessor::WorkerThreadMain() {
+         rex::thread::MaybeYield();
+         loop_count++;
+         write_ptr_index = write_ptr_index_.load();
+-      } while (worker_running_ && pending_fns_.empty() &&
++      } while (worker_running_ && pending_fns_.empty() && !ring_reset_pending_ &&
+                (write_ptr_index == 0xBAADF00D || read_ptr_index_ == write_ptr_index));
+       ReturnFromWait();
+       if (!worker_running_ || !pending_fns_.empty()) {
+         continue;
+       }
+     }
++    // Checked after reading the write index: it may already be the new ring's, and the old ring
++    // would run a packet with it.
++    if (ring_reset_pending_) {
++      continue;
++    }
+     assert_true(read_ptr_index_ != write_ptr_index);
+ 
+     // Execute. Note that we handle wraparound transparently.
+@@ -282,9 +289,13 @@ void CommandProcessor::WorkerThreadMain() {
+ 
+     // TODO(benvanik): use reader->Read_update_freq_ and only issue after moving
+     //     that many indices.
+-    if (read_ptr_writeback_ptr_) {
+-      memory::store_and_swap<uint32_t>(memory_->TranslatePhysical(read_ptr_writeback_ptr_),
+-                                       read_ptr_index_);
++    {
++      // Under the lock so an index from the old ring never lands in the new ring's write-back.
++      std::lock_guard<std::mutex> lock(ring_mutex_);
++      if (read_ptr_writeback_ptr_ && !ring_reset_pending_) {
++        memory::store_and_swap<uint32_t>(memory_->TranslatePhysical(read_ptr_writeback_ptr_),
++                                         read_ptr_index_);
++      }
+     }
+ 
+     // FIXME: We're supposed to process the WAIT_UNTIL register at this point,
+@@ -351,14 +362,41 @@ bool CommandProcessor::SetupContext() {
+ void CommandProcessor::ShutdownContext() {}
+ 
+ void CommandProcessor::InitializeRingBuffer(uint32_t ptr, uint32_t size_log2) {
++  // A Module loading its own D3D device moves the ring while the worker runs. The worker makes the
++  // change itself, between packets (ApplyRingReset). The old ring's write index means nothing on
++  // the new ring: left in place, the worker would run the new ring's unwritten memory up to it.
++  const uint32_t size = uint32_t(1) << (size_log2 + 3);
++  std::lock_guard<std::mutex> lock(ring_mutex_);
++  const uint32_t old_write = write_ptr_index_.exchange(0xBAADF00D);
++  pending_ring_ptr_ = ptr;
++  pending_ring_size_ = size;
++  // The old write-back memory belongs to the old device; EnableReadPointerWriteBack follows.
++  read_ptr_writeback_ptr_ = 0;
++  ring_reset_pending_ = true;
++  write_ptr_index_event_->Set();
++  REXGPU_INFO("Ring init: {:08X} size {:X} (old write index {:X})", ptr, size, old_write);
++}
++
++void CommandProcessor::ApplyRingReset() {
++  if (!ring_reset_pending_) {
++    return;
++  }
++  std::lock_guard<std::mutex> lock(ring_mutex_);
++  REXGPU_INFO("Ring reset applied: {:08X} -> {:08X}, old read index {:X}", primary_buffer_ptr_,
++              pending_ring_ptr_, read_ptr_index_);
++  primary_buffer_ptr_ = pending_ring_ptr_;
++  primary_buffer_size_ = pending_ring_size_;
+   read_ptr_index_ = 0;
+-  primary_buffer_ptr_ = ptr;
+-  primary_buffer_size_ = uint32_t(1) << (size_log2 + 3);
++  if (read_ptr_writeback_ptr_) {
++    memory::store_and_swap<uint32_t>(memory_->TranslatePhysical(read_ptr_writeback_ptr_), 0);
++  }
++  ring_reset_pending_ = false;
+ }
+ 
+ void CommandProcessor::EnableReadPointerWriteBack(uint32_t ptr, uint32_t block_size_log2) {
+   // CP_RB_RPTR_ADDR Ring Buffer Read Pointer Address 0x70C
+   // ptr = RB_RPTR_ADDR, pointer to write back the address to.
++  std::lock_guard<std::mutex> lock(ring_mutex_);
+   read_ptr_writeback_ptr_ = ptr;
+   // CP_RB_CNTL Ring Buffer Control 0x704
+   // block_size = RB_BLKSZ, log2 of number of quadwords read between updates of
+@@ -665,7 +703,7 @@ uint32_t CommandProcessor::ExecutePrimaryBuffer(uint32_t read_index, uint32_t wr
+       assert_always();
+       break;
+     }
+-  } while (reader.read_count());
++  } while (reader.read_count() && !ring_reset_pending_);
+ 
+   OnPrimaryBufferEnd();
+ 
+@@ -690,7 +728,7 @@ void CommandProcessor::ExecuteIndirectBuffer(uint32_t ptr, uint32_t count) {
+       assert_always();
+       break;
+     }
+-  } while (reader.read_count());
++  } while (reader.read_count() && !ring_reset_pending_);
+   g_draw_census.current_ib = outer_ib;
+   g_draw_census.current_ib_words = outer_words;
+ }
+@@ -1138,6 +1176,10 @@ bool CommandProcessor::ExecutePacketType3_WAIT_REG_MEM(memory::RingBuffer* reade
+ 
+   bool matched = false;
+   do {
++    // A wait on the old ring may never end once its device is gone.
++    if (ring_reset_pending_) {
++      return true;
++    }
+     uint32_t value = 0;
+     if (is_memory) {
+       value =
