@@ -38,7 +38,7 @@ public sealed class XenosRecompConverterTests : IDisposable
                 null, TestContext.Current.CancellationToken));
 
         Assert.Contains("shader converter is missing", error.Message);
-        Assert.Contains("Classic", error.Message);
+        Assert.Contains("try again", error.Message);
     }
 
     [Fact]

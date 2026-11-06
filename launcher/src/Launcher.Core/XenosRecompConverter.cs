@@ -96,7 +96,9 @@ public sealed partial class XenosRecompConverter(string executable) : IShaderCon
             var failures = errors.Select(line => Failures().Match(line)).FirstOrDefault(match => match.Success);
             detail = failures is not null
                 ? $"XenosRecomp could not convert {failures.Groups[1].Value} shaders"
-                : $"XenosRecomp stopped with exit code {process.ExitCode}";
+                : process.ExitCode == GameExitReport.DllNotFoundExitCode
+                    ? $"XenosRecomp could not start: {GameExitReport.DllNotFoundWords} (0xC0000135)"
+                    : $"XenosRecomp stopped with exit code {process.ExitCode}";
         }
         throw new ShaderConverterException(detail);
     }

@@ -1,7 +1,7 @@
 # The shader converter's files as the game folder holds them (xenosrecomp\ beside topspin4.exe,
 # where the Launcher's XenosRecompConverter.ShippedWith looks), and where each comes from.
 # One list for scripts/package.ps1 (the release) and scripts/build.ps1 (the dev build folder), so
-# the two folders never differ.
+# the two folders hold the same converter (a release also adds the Visual C++ runtime beside it).
 #
 #   . "$PSScriptRoot/ConverterFiles.ps1"; Get-ConverterFiles $projectRoot
 
