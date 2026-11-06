@@ -179,6 +179,7 @@ if(TOPSPIN4_BUILD_TESTS AND REXSDK_DIR)
         tests/host/test_load_flash.cpp
         tests/host/test_module_shaders.cpp
         tests/host/test_page_model.cpp
+        tests/host/test_native_unavailable.cpp
         tests/host/test_presets_controls.cpp
         tests/host/test_options_row.cpp
         tests/host/test_crash_report.cpp

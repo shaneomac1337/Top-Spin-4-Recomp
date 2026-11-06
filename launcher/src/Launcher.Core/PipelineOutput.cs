@@ -69,8 +69,8 @@ public sealed record PipelineResult(PipelineOutcome Outcome, int ExitCode, int P
         PipelineOutcome.Ready => "Pipelines ready.",
         PipelineOutcome.Partial =>
             $"Pipelines ready, but the graphics driver refused {Failed} of them; the game builds those while it runs.",
-        // Every reason the mode gives is one that also sends a normal start to Classic.
-        PipelineOutcome.Failed => $"Pipelines could not be prepared: {ReasonText(Reason)}, so the game runs on Classic.",
+        // Every reason the mode gives is one that also ends a normal start.
+        PipelineOutcome.Failed => $"Pipelines could not be prepared: {ReasonText(Reason)}.",
         _ when StartError is not null => $"Pipelines could not be prepared: {StartError.TrimEnd('.')}.",
         _ => $"Pipelines could not be prepared: the game exited with code 0x{ExitCode:X8}. {MayStutter} " +
              "Its log is in the logs folder.",
@@ -82,6 +82,7 @@ public sealed record PipelineResult(PipelineOutcome Outcome, int ExitCode, int P
         "stale_shader_pack" or "wrong_shader_pack_version" => "the Native shaders are out of date",
         "truncated_shader_pack" or "bad_shader_pack_magic" or "corrupt_shader_pack" => "the Native shaders are damaged",
         "vulkan_setup" => "Vulkan could not start on this graphics card",
+        "unsupported_gpu" => "this graphics card lacks a Vulkan feature the game needs",
         "native_off" => "the Native renderer is off",
         _ => $"the game reported {reason ?? "no reason"}",
     };

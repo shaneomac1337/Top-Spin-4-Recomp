@@ -1,6 +1,6 @@
 // Which renderer is asked for (ticket 10, ADR-0005): the ts4_renderer setting, unless Native is
 // not available in this build, when Classic draws and the log says why. A Native start that
-// fails later falls back to Classic too (native/renderer_fallback.h).
+// fails later ends the session (native/native_unavailable.h).
 
 #pragma once
 

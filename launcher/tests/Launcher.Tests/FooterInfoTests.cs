@@ -14,9 +14,10 @@ public sealed class FooterInfoTests
 
     [Theory]
     [InlineData("ts4_renderer = \"native\"\n", "Native renderer")]
-    [InlineData("ts4_renderer = \"classic\"\n", "Classic renderer")]
-    [InlineData("other = 1\n", "Classic renderer")]
-    [InlineData(null, "Classic renderer")]
+    [InlineData("version = 3\nts4_renderer = \"classic\"\n", "Classic renderer")]
+    [InlineData("version = 2\nts4_renderer = \"classic\"\n", "Native renderer")]
+    [InlineData("other = 1\n", "Native renderer")]
+    [InlineData(null, "Native renderer")]
     public void The_renderer_is_the_settings_choice_or_the_games_default(string? text, string expected) =>
         Assert.Equal(expected, FooterInfo.Renderer(text));
 

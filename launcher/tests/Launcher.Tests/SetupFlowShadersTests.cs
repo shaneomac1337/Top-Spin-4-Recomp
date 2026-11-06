@@ -138,7 +138,7 @@ public sealed class SetupFlowShadersTests : IDisposable
         Assert.Equal(SetupPhase.Ready, flow.Phase);
         Assert.NotNull(flow.Prepared);
         Assert.Contains("XenosRecomp could not convert 2 shaders", flow.ShaderFailure);
-        Assert.Contains("Classic", flow.ShaderFailure);
+        Assert.Contains("try again", flow.ShaderFailure);
         Assert.Equal(flow.ShaderFailure, flow.Message);
         Assert.False(File.Exists(PackPath));
         Assert.Equal(LauncherPage.Home, new LauncherShell(flow).Page);

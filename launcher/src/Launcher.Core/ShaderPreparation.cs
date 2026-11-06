@@ -41,7 +41,7 @@ public interface IModuleShaders
     int Write(string cacheDirectory, CancellationToken cancel);
 }
 
-/// <summary>The shader step failed; the message says why and that the game runs on the Classic renderer.</summary>
+/// <summary>The shader step failed; the message says why and how to try again.</summary>
 public sealed class ShaderPreparationException(string message, Exception? inner = null) : Exception(message, inner);
 
 public enum ShaderStep
@@ -79,10 +79,10 @@ public sealed record ShaderStatus(ShaderPackCheck Pack, int WaitingShaders)
             $"The game found {WaitingShaders} new shader{(WaitingShaders == 1 ? "" : "s")}. They are added to the shader pack after the session.",
         ShaderPackProblem.None => "",
         ShaderPackProblem.Stale =>
-            "The Native shaders were prepared for another version of the game, so it runs on Classic. They are prepared again.",
+            "The Native shaders were prepared for another version of the game. They are prepared again.",
         ShaderPackProblem.Damaged =>
-            "The Native shaders are damaged, so the game runs on Classic. They are prepared again.",
-        _ => "The Native shaders are not prepared, so the game runs on Classic.",
+            "The Native shaders are damaged. They are prepared again.",
+        _ => "The Native shaders are not prepared.",
     };
 }
 
@@ -90,7 +90,7 @@ public sealed record ShaderStatus(ShaderPackCheck Pack, int WaitingShaders)
 /// Setup's "Preparing shaders" step (spec, "Prepare shaders"): read every shader container from the prepared
 /// game files (the archives, then the Modules through <see cref="IModuleShaders"/>), add any the game left in
 /// the top-up folder, convert them with XenosRecomp and write the shader pack into the cache folder. A failure or a
-/// cancel leaves any earlier pack in place; without a usable pack the game runs on Classic.
+/// cancel leaves any earlier pack in place; without a usable pack the game says so and ends.
 /// </summary>
 public sealed partial class ShaderPreparation(IShaderConverter converter, ulong converterId, IModuleShaders? modules = null)
 {
@@ -124,7 +124,7 @@ public sealed partial class ShaderPreparation(IShaderConverter converter, ulong 
     /// <summary>Where the game puts a top-up container it converted live.</summary>
     public static string ConvertedPath(string containerFile) => Path.ChangeExtension(containerFile, ConvertedExtension);
 
-    /// <exception cref="ShaderPreparationException">The step failed; the game runs on Classic.</exception>
+    /// <exception cref="ShaderPreparationException">The step failed; the game can't start until it succeeds.</exception>
     /// <exception cref="OperationCanceledException">The step was cancelled.</exception>
     public ShaderResult Run(string gameDataDirectory, string cacheDirectory, IProgress<ShaderProgress>? progress, CancellationToken cancel)
     {
@@ -279,7 +279,7 @@ public sealed partial class ShaderPreparation(IShaderConverter converter, ulong 
     private const string FailedPrefix = "The Native shaders could not be prepared";
 
     internal static string Failed(string why) =>
-        $"{FailedPrefix}: {why.TrimEnd('.')}. Play still starts the game, on the Classic renderer, until they are.";
+        $"{FailedPrefix}: {why.TrimEnd('.')}. The game can't start until they are. Close and reopen the Launcher to try again.";
 
     private static void TryDelete(string file)
     {

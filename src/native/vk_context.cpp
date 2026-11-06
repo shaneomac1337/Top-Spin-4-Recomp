@@ -38,6 +38,7 @@ uint32_t g_next_descriptor[kHeapCount] = {};
 std::vector<uint32_t> g_free_descriptors[kHeapCount];
 std::vector<std::pair<uint64_t, Retired>> g_retired;
 bool g_ring_full_logged = false;
+std::string g_missing_features;
 
 bool CreateHeaps() {
   const auto& dfn = *g_vk.dfn;
@@ -147,16 +148,28 @@ bool CreateUploadRing(UploadRing& ring, VkDeviceSize size) {
 
 }  // namespace
 
+const std::string& MissingFeatures() { return g_missing_features; }
+
 bool InitializeContext(const rex::ui::vulkan::VulkanDevice* device,
                        rex::memory::Memory* memory) {
   const auto& properties = device->properties();
-  if (!properties.bufferDeviceAddress || !properties.runtimeDescriptorArray ||
-      !properties.descriptorBindingPartiallyBound ||
-      !properties.descriptorBindingSampledImageUpdateAfterBind ||
-      !properties.descriptorBindingUpdateUnusedWhilePending || !properties.shaderInt64 ||
-      !properties.dynamicRendering) {
-    REXLOG_ERROR("native renderer: the Vulkan device lacks buffer device address, "
-                 "bindless descriptors, shaderInt64 or dynamic rendering");
+  g_missing_features.clear();
+  const auto require = [](bool present, const char* name) {
+    if (present) return;
+    g_missing_features += (g_missing_features.empty() ? "" : ", ");
+    g_missing_features += name;
+  };
+  require(properties.bufferDeviceAddress, "bufferDeviceAddress");
+  require(properties.runtimeDescriptorArray, "runtimeDescriptorArray");
+  require(properties.descriptorBindingPartiallyBound, "descriptorBindingPartiallyBound");
+  require(properties.descriptorBindingSampledImageUpdateAfterBind,
+          "descriptorBindingSampledImageUpdateAfterBind");
+  require(properties.descriptorBindingUpdateUnusedWhilePending,
+          "descriptorBindingUpdateUnusedWhilePending");
+  require(properties.shaderInt64, "shaderInt64");
+  require(properties.dynamicRendering, "dynamicRendering");
+  if (!g_missing_features.empty()) {
+    REXLOG_ERROR("native renderer: the Vulkan device lacks {}", g_missing_features);
     return false;
   }
   g_vk.device = device;

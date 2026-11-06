@@ -75,8 +75,8 @@ catch (OperationCanceledException)
     return 1;
 }
 
-// The shader step: the same one the Launcher window runs. A failure leaves the game files set up, and Play starts the game on
-// Classic, so it has its own exit code and the runtime flags are printed all the same.
+// The shader step: the same one the Launcher window runs. A failure leaves the game files set up, but the game won't start
+// until a later run succeeds, so it has its own exit code and the runtime flags are printed all the same.
 const int ShaderStepFailed = 40;
 var exitCode = 0;
 var exe = gameExe ?? LaunchArguments.FindGameExe(AppContext.BaseDirectory) ?? Path.Combine(AppContext.BaseDirectory, LaunchArguments.GameExeName);

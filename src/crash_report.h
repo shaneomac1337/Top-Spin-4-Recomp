@@ -21,6 +21,8 @@ void SetSettingsFile(const std::filesystem::path& path);
 // The game window (an HWND), hidden before the report's message shows.
 void SetWindow(void* native_window);
 void SetGpu(const std::string& name, const std::string& driver_version);
+// A message box that ends a session before it could draw; nothing under --headless.
+void ShowFatalMessage(const std::string& utf8);
 // The guest's memory views, left out of the dump (they hold game data).
 void SetGuestMemory(const uint8_t* virtual_membase, const uint8_t* physical_membase);
 

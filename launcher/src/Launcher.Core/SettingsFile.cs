@@ -169,6 +169,8 @@ public static class SettingsFile
     [
         // 1 -> 2: the Resolution scale's 4x was removed (the largest is 3x), so a saved 4 becomes 3.
         text => ReplaceValue(text, "ts4_resolution_scale", "4", "3"),
+        // 2 -> 3: players no longer choose Classic, so a saved one becomes Native.
+        text => ReplaceValue(text, "ts4_renderer", "classic", "native"),
     ];
 
     /// <summary>
@@ -183,6 +185,9 @@ public static class SettingsFile
         for (var i = version - 1; i < Math.Min(Migrations.Length, currentVersion - 1); i++) text = Migrations[i](text);
         return WithVersion(text, currentVersion);
     }
+
+    /// <summary>The text after every migration this build knows, for a reader without the game's export.</summary>
+    public static string MigrateToLatest(string text) => Migrate(text, Migrations.Length + 1);
 
     /// <summary>The value written after <paramref name="key"/> with quotes and trailing comment removed, or null when the key is absent.</summary>
     public static string? ValueOf(string text, string key)

@@ -1,5 +1,6 @@
-// Renderer fallback: a session asked to run on Native that runs on Emulated
-// instead. Any renderer fallback fails a scene (ticket 10). The shader pack
+// Renderer fallback: why a session asked to run on Native can't. A player's session
+// ends with the reason (native_unavailable.h); only the Launcher's setup modes carry
+// on without Native. Any renderer fallback fails a scene (ticket 10). The shader pack
 // loader (shader_pack.h) decides the shader-related reasons.
 
 #pragma once
@@ -17,6 +18,7 @@ enum class Fallback : uint8_t {
   kBadShaderPackMagic,       // the shader pack file is not a shader pack
   kWrongShaderPackVersion,   // a shader pack of another format version
   kCorruptShaderPack,        // the shader pack's contents do not add up
+  kUnsupportedGpu,           // the GPU lacks a Vulkan feature Native needs
 };
 
 inline const char* FallbackName(Fallback fallback) {
@@ -29,6 +31,7 @@ inline const char* FallbackName(Fallback fallback) {
     case Fallback::kBadShaderPackMagic: return "bad_shader_pack_magic";
     case Fallback::kWrongShaderPackVersion: return "wrong_shader_pack_version";
     case Fallback::kCorruptShaderPack: return "corrupt_shader_pack";
+    case Fallback::kUnsupportedGpu: return "unsupported_gpu";
   }
   return "unknown";
 }

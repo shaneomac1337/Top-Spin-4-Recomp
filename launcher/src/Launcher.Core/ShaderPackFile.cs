@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 
 namespace TopSpin4.Launcher.Core;
 
-/// <summary>Why a shader pack cannot be used; anything but <see cref="None"/> runs the game on the Classic renderer.</summary>
+/// <summary>Why a shader pack cannot be used; anything but <see cref="None"/> stops the game from starting.</summary>
 public enum ShaderPackProblem
 {
     None,

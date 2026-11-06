@@ -39,7 +39,7 @@ inline std::string GpuFailureReason(int32_t result, const char* call) {
 // "native renderer: gpu failure ".
 inline std::string GpuFailureLine(int32_t result, const char* call) {
   return "native renderer: gpu failure " + GpuFailureReason(result, call) +
-         "; ending the session. Switch the renderer to Emulated in the launcher if this repeats.";
+         "; ending the session.";
 }
 
 }  // namespace topspin4::native

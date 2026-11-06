@@ -255,11 +255,17 @@ CrashFacts Facts(uint32_t code, const std::tm& now) {
   return facts;
 }
 
-void ShowSaved(const std::filesystem::path& zip, const wchar_t* what) {
-  if (rex::cvar::Query<bool>("headless")) return;
-  // A frozen game window behind the message reads as a hang (story 1). Async:
-  // the UI thread may be the one waiting on this thread.
+// Whether a message box may show (not under --headless); hides the game window if so. A frozen
+// game window behind the message reads as a hang (story 1). Async: the UI thread may be the one
+// waiting on this thread.
+bool PrepareForMessage() {
+  if (rex::cvar::Query<bool>("headless")) return false;
   if (HWND window = g_window.load()) ShowWindowAsync(window, SW_HIDE);
+  return true;
+}
+
+void ShowSaved(const std::filesystem::path& zip, const wchar_t* what) {
+  if (!PrepareForMessage()) return;
   const std::wstring text = std::wstring(what) + L" A crash report was saved:\n\n" +
                             zip.wstring() +
                             L"\n\nAttach it to your GitHub issue. Open its folder now?";
@@ -391,6 +397,12 @@ void SetGpu(const std::string& name, const std::string& driver_version) {
   std::lock_guard lock(g_mutex);
   g_gpu_name = name;
   g_driver_version = driver_version;
+}
+
+void ShowFatalMessage(const std::string& utf8) {
+  if (!PrepareForMessage()) return;
+  MessageBoxW(nullptr, Wide(utf8).c_str(), L"Top Spin 4",
+              MB_OK | MB_ICONERROR | MB_SETFOREGROUND | MB_TOPMOST);
 }
 
 void SetGuestMemory(const uint8_t* virtual_membase, const uint8_t* physical_membase) {

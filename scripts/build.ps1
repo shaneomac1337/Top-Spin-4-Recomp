@@ -61,7 +61,7 @@ if ($Action -in 'Launcher', 'LauncherTest') {
             Copy-Item -LiteralPath "$projectRoot/HELP.md" "$buildFolder/HELP.md" -Force
             Write-Output "Launcher placed beside the game: $buildFolder/topspin4-launcher.exe"
             # And the shader converter, where a release has it (xenosrecomp\), or the Launcher's shader
-            # step fails and Play falls back to Classic.
+            # step fails and the game won't start.
             . "$PSScriptRoot/ConverterFiles.ps1"
             $missing = Copy-ConverterFiles $projectRoot $buildFolder
             if ($missing) {

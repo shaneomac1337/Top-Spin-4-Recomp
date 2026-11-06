@@ -268,6 +268,10 @@ inline std::vector<const Setting*> SettingsInPageOrder() {
   return sorted;
 }
 
+// Whether the settings pages list it. Players get Native; only a developer's --ts4_renderer=classic
+// asks for the reference renderer (ADR-0005).
+inline bool ShownOnSettingsPage(const Setting& setting) { return setting.key != "ts4_renderer"; }
+
 inline const Setting* FindSetting(std::string_view key) {
   for (const Setting& setting : PlayerSettings()) {
     if (setting.key == key) return &setting;

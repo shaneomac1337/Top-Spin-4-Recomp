@@ -43,6 +43,8 @@ public sealed partial class GameModuleShaders(string gameExe, Preparation prepar
             throw new ShaderPreparationException(error.Message, error);
         }
         cancel.ThrowIfCancellationRequested();
+        if (exitCode == GameExitReport.DllNotFoundExitCode)
+            throw new ShaderPreparationException($"The game could not start: {GameExitReport.DllNotFoundWords} (0xC0000135)");
         if (result is null) throw new ShaderPreparationException($"{Stopped} (exit code {exitCode})");
         var fields = result.Groups[1].Value.Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Select(field => field.Split('=', 2)).Where(parts => parts.Length == 2)

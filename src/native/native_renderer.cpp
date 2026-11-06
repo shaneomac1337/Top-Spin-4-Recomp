@@ -53,7 +53,10 @@
 #include "native/frame_dumps.h"
 #include "native/rect_list.h"
 #include "native/renderer_fallback.h"
+#include "crash_report.h"
+#include "module_shaders.h"
 #include "native/gpu_failure.h"
+#include "native/native_unavailable.h"
 #include "native/shader_pack.h"
 #include "native/shader_library.h"
 #include "native/shader_topup.h"
@@ -2054,6 +2057,21 @@ void ApplyImageSettings() {
   REXLOG_INFO("image quality: CAS sharpening {}", cas.sharpness);
 }
 
+namespace {
+
+// Native can't start: a player's session ends with the reason. The Launcher's setup modes carry on,
+// since they run before the shaders exist and report a fallback themselves.
+void EndSessionIfNotSetup(std::string_view gpu) {
+  if (pipelines::PrepareMode() || module_shaders::Requested()) return;
+  const std::string message = NativeUnavailableMessage(g.fallback, gpu, MissingFeatures());
+  REXLOG_ERROR("{}{}", kNativeUnavailableLogPrefix, message);
+  rex::FlushLogging();
+  crash::ShowFatalMessage(message);
+  std::_Exit(kNativeUnavailableExitCode);
+}
+
+}  // namespace
+
 void Configure(rex::Runtime* runtime) {
   g_runtime = runtime;
   // The GPU plugin, loaded after OnPreSetup, defines anisotropic_override.
@@ -2083,7 +2101,7 @@ void Configure(rex::Runtime* runtime) {
   auto* provider = graphics_system
                        ? static_cast<rex::ui::vulkan::VulkanProvider*>(graphics_system->provider())
                        : nullptr;
-  // A missing, damaged or stale shader pack starts the session on Emulated.
+  // A missing, damaged or stale shader pack ends the session (EndSessionIfNotSetup).
   std::filesystem::path pack_path = REXCVAR_GET(ts4_shader_pack);
   if (pack_path.empty()) {
     pack_path = (runtime ? runtime->cache_root() : std::filesystem::path()) / kShaderPackFileName;
@@ -2091,9 +2109,10 @@ void Configure(rex::Runtime* runtime) {
   ShaderPackLoad pack = LoadShaderPackFile(pack_path, TOPSPIN4_EXPECTED_SHADER_CONVERTER_ID);
   g.fallback = pack.fallback;
   if (g.fallback != Fallback::kNone) {
-    REXLOG_ERROR("native renderer: renderer fallback {} ({}); running on Emulated. Rebuild the "
-                 "shader pack with the launcher or pwsh scripts/convert-shaders.ps1.",
+    REXLOG_ERROR("native renderer: renderer fallback {} ({}). Rebuild the shader pack with the "
+                 "launcher or pwsh scripts/convert-shaders.ps1.",
                  FallbackName(g.fallback), pack.detail);
+    EndSessionIfNotSetup({});
     return;
   }
   const uint64_t converter_id = pack.pack.converter_id;
@@ -2127,9 +2146,11 @@ void Configure(rex::Runtime* runtime) {
     ok = ok && CreateFrameSlot(slot);
   }
   if (!ok) {
-    REXLOG_ERROR("native renderer: could not create Vulkan resources; running on Emulated");
+    REXLOG_ERROR("native renderer: could not create Vulkan resources");
+    const std::string gpu = g.device ? g.device->properties().deviceName : "";
     g.device = nullptr;
-    g.fallback = Fallback::kVulkanSetup;
+    g.fallback = MissingFeatures().empty() ? Fallback::kVulkanSetup : Fallback::kUnsupportedGpu;
+    EndSessionIfNotSetup(gpu);
     return;
   }
   InitializeGpuTimer();
@@ -2306,7 +2327,7 @@ void OnExit() {
 }
 
 // A GPU failure ends the session (ADR-0025): no device recreation, no switch
-// to Emulated mid-session. The launcher offers Emulated for the next start.
+// to Emulated mid-session.
 // Call it with no queue held: the report's message box stays up a while. A
 // lost device often fails on two threads at once (render and present); the
 // second waits here for the first to end the process.

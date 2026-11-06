@@ -135,7 +135,7 @@ public partial class HomePage : UserControl
         {
             button.Content = label;
             button.Classes.Add("secondary");
-            ToolTip.SetTip(button, "Runs once on the original settings (Classic renderer, original look) and leaves your Settings file unchanged.");
+            ToolTip.SetTip(button, "Runs once on the original settings (original look and resolution) and leaves your Settings file unchanged.");
         }
         else
         {

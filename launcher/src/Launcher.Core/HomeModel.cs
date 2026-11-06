@@ -10,8 +10,10 @@ public enum HomeStatus
     GameExeMissing,
     /// <summary>The prepared folders are gone or incomplete; setup has to run again.</summary>
     GameFilesMissing,
-    /// <summary>The last session ended with the GPU or driver failing; the player should switch renderer.</summary>
+    /// <summary>The last session ended with the GPU or driver failing.</summary>
     LastSessionGpuFailure,
+    /// <summary>The Native renderer could not start last session; the status line says why.</summary>
+    NativeUnavailable,
     /// <summary>The last session crashed or was ended from outside.</summary>
     LastSessionCrashed,
 }
@@ -54,12 +56,13 @@ public sealed class HomeModel(Preparation preparation, string? gameExe)
         : _lastExit?.Kind switch
         {
             GameExitKind.GpuFailure => HomeStatus.LastSessionGpuFailure,
+            GameExitKind.NativeUnavailable => HomeStatus.NativeUnavailable,
             GameExitKind.Crashed => HomeStatus.LastSessionCrashed,
             _ => HomeStatus.Ready,
         };
 
     /// <summary>PLAY works whenever the exe and the prepared folders are there, also after a failed session.</summary>
-    public bool CanPlay => Status is HomeStatus.Ready or HomeStatus.LastSessionGpuFailure or HomeStatus.LastSessionCrashed;
+    public bool CanPlay => Status is HomeStatus.Ready or HomeStatus.LastSessionGpuFailure or HomeStatus.NativeUnavailable or HomeStatus.LastSessionCrashed;
 
     /// <summary>
     /// Safe start is offered prominently, not only under "Trouble starting?", after a GPU failure, a
@@ -79,6 +82,7 @@ public sealed class HomeModel(Preparation preparation, string? gameExe)
     {
         HomeStatus.Ready => "Ready to play.",
         HomeStatus.LastSessionGpuFailure => "The last session stopped on the graphics card. You can play again.",
+        HomeStatus.NativeUnavailable => "The game could not start.",
         HomeStatus.LastSessionCrashed => "The last session crashed. You can play again.",
         HomeStatus.GameRunning => "The game is running.",
         HomeStatus.GameExeMissing => $"{LaunchArguments.GameExeNotFound}. Put the Launcher in the game's folder.",

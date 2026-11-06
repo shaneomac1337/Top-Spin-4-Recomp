@@ -101,7 +101,9 @@ public sealed class SettingsPageModel
             {
                 var rows = new List<SettingRow>();
                 if (section == _schema.PresetSection && _schema.Presets.Count > 0) rows.Add(PresetRow(values, renderer));
-                rows.AddRange(_schema.Settings.Where(setting => setting.Section == section).OrderBy(setting => setting.Order)
+                // Players get Native, so the renderer has no row (ShownOnSettingsPage in src/settings/registry.h).
+                rows.AddRange(_schema.Settings.Where(setting => setting.Section == section && setting.Key != SettingsSchema.RendererKey)
+                    .OrderBy(setting => setting.Order)
                     .Select(setting => Row(setting, values[setting.Key], renderer)));
                 if (rows.Any(row => row.Binding is not null)) rows.Add(ResetControlsRow());
                 return new SettingsTab(section, rows);
@@ -199,7 +201,7 @@ public sealed class SettingsPageModel
     // The renderer the values choose; a file without one runs the schema's default.
     private string RendererIn(IReadOnlyDictionary<string, string> values) =>
         values.TryGetValue(SettingsSchema.RendererKey, out var renderer) ? renderer
-            : _schema!.Settings.FirstOrDefault(setting => setting.Key == SettingsSchema.RendererKey)?.Default ?? "classic";
+            : _schema!.Settings.FirstOrDefault(setting => setting.Key == SettingsSchema.RendererKey)?.Default ?? "native";
 
     private SettingRow Row(SettingDescription setting, string value, string renderer)
     {

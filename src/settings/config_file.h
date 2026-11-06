@@ -208,6 +208,11 @@ inline const std::vector<Migration>& Migrations() {
       [](std::string_view text) {
         return ReplaceTomlValue(text, "ts4_resolution_scale", "4", "3");
       },
+      // 2 -> 3: players no longer choose Classic (ADR-0005), so a saved one becomes Native instead
+      // of leaving them on a renderer the Settings page no longer lists.
+      [](std::string_view text) {
+        return ReplaceTomlValue(text, "ts4_renderer", "classic", "native");
+      },
   };
   return migrations;
 }

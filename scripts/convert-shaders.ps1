@@ -10,13 +10,13 @@ Set-Location $projectRoot
 $tool = 'out/build/xenosrecomp/XenosRecomp/XenosRecomp.exe'
 if (!(Test-Path $tool)) { & "$PSScriptRoot/build-xenosrecomp.ps1" | Out-Null }
 if (!(Get-ChildItem $InputDirectory -Filter '*.bin' -ErrorAction SilentlyContinue)) {
-    throw "No shader containers in $InputDirectory. Run the game once with --ts4_shader_dump_dir=$InputDirectory."
+    throw "No shader containers in $InputDirectory. Run the game once with --ts4_renderer=classic --ts4_shader_dump_dir=$InputDirectory (without a shader pack, Native ends the session)."
 }
 New-Item -ItemType Directory -Force cache/shader-native | Out-Null
 & $tool $InputDirectory cache/shader-native/shader_cache.cpp .tools/xenosrecomp/XenosRecomp/shader_common.h cache/shader-native/hlsl *> cache/shader-native/run.log
 if ($LASTEXITCODE -ne 0) { throw "XenosRecomp failed; see cache/shader-native/run.log" }
 # The XenosRecomp patch series the shaders were converted with (CMakeLists.txt computes the
-# same id); a build configured with another series treats the pack as stale and runs on Classic.
+# same id); a build configured with another series treats the pack as stale and will not start.
 $series = [Text.StringBuilder]::new()
 foreach ($patch in Get-ChildItem patches/xenosrecomp -Filter '*.patch' | Sort-Object Name) {
     $null = $series.Append([Convert]::ToHexString([IO.File]::ReadAllBytes($patch.FullName)).ToLower())

@@ -347,12 +347,12 @@ TEST_CASE("Saving one key rewrites only that line, keeping the version and every
 
 // --- The build's own migrations: Resolution scale 4x was removed (the maximum is 3x) ---
 
-TEST_CASE("The build is at settings file version 2, one migration past version 1") {
-  CHECK(Migrations().size() == 1);
-  CHECK(CurrentVersion() == 2);
+TEST_CASE("The build is at settings file version 3, two migrations past version 1") {
+  CHECK(Migrations().size() == 2);
+  CHECK(CurrentVersion() == 3);
 }
 
-TEST_CASE("A version 1 file with a Resolution scale of 4 loads as 3 and is rewritten at version 2") {
+TEST_CASE("A version 1 file with a Resolution scale of 4 loads as 3 and is rewritten at version 3") {
   TempFolder folder;
   const fs::path path = SettingsPath(folder.path);
   WriteFile(path, "version = 1\n# mine\nts4_resolution_scale = \"4\"  # big\nts4_msaa = \"4\"\n");
@@ -364,7 +364,7 @@ TEST_CASE("A version 1 file with a Resolution scale of 4 loads as 3 and is rewri
                                                             {"ts4_resolution_scale", "3"}});
   // Line-preserving: the comment stays, and the MSAA's own "4" is not a scale.
   CHECK(ReadText(path) ==
-        "version = 2\n# mine\nts4_resolution_scale = \"3\"  # big\nts4_msaa = \"4\"\n");
+        "version = 3\n# mine\nts4_resolution_scale = \"3\"  # big\nts4_msaa = \"4\"\n");
   Loaded again(path);
   CHECK_FALSE(again.report.rewritten);
   CHECK(again.values == loaded.values);
@@ -379,28 +379,28 @@ TEST_CASE("A version 1 file with any other Resolution scale keeps it") {
     Loaded loaded(path);
     CHECK(loaded.report.rewritten);
     CHECK(ReadText(path) ==
-          std::string("version = 2\nts4_resolution_scale = \"") + scale + "\"\n");
+          std::string("version = 3\nts4_resolution_scale = \"") + scale + "\"\n");
     CHECK(loaded.values == std::map<std::string, std::string>{{"ts4_resolution_scale", scale}});
   }
 }
 
 TEST_CASE("The 4x migration also takes an unversioned file and a single-quoted or bare 4") {
   CHECK(MigrateSettingsText("ts4_resolution_scale = '4'\n") ==
-        "version = 2\nts4_resolution_scale = '3'\n");
+        "version = 3\nts4_resolution_scale = '3'\n");
   CHECK(MigrateSettingsText("version = 1\r\nts4_resolution_scale = 4\r\n") ==
-        "version = 2\r\nts4_resolution_scale = 3\r\n");
+        "version = 3\r\nts4_resolution_scale = 3\r\n");
   CHECK(MigrateSettingsText("version = 1\nts4_resolution_scale=\"4\"") ==
-        "version = 2\nts4_resolution_scale=\"3\"");
+        "version = 3\nts4_resolution_scale=\"3\"");
   // 40 is no scale and is not touched; a file with no scale at all gains none.
   CHECK(MigrateSettingsText("version = 1\nts4_resolution_scale = \"40\"\n") ==
-        "version = 2\nts4_resolution_scale = \"40\"\n");
-  CHECK(MigrateSettingsText("version = 1\nmnk_mode = true\n") == "version = 2\nmnk_mode = true\n");
+        "version = 3\nts4_resolution_scale = \"40\"\n");
+  CHECK(MigrateSettingsText("version = 1\nmnk_mode = true\n") == "version = 3\nmnk_mode = true\n");
 }
 
-TEST_CASE("A version 2 file is not migrated again: its 4 is a value the setting refuses") {
+TEST_CASE("A version 3 file is not migrated again: its 4 is a value the setting refuses") {
   TempFolder folder;
   const fs::path path = SettingsPath(folder.path);
-  const std::string text = "version = 2\nts4_resolution_scale = \"4\"\n";
+  const std::string text = "version = 3\nts4_resolution_scale = \"4\"\n";
   WriteFile(path, text);
   Loaded loaded(path);
   CHECK_FALSE(loaded.report.rewritten);
@@ -414,7 +414,7 @@ TEST_CASE("Saving a setting into a version 1 file migrates its Resolution scale 
   const fs::path path = SettingsPath(folder.path);
   WriteFile(path, "version = 1\nts4_resolution_scale = \"4\"\n");
   REQUIRE(SaveSetting(path, "mnk_mode", "true"));
-  CHECK(ReadText(path) == "version = 2\nts4_resolution_scale = \"3\"\nmnk_mode = true\n");
+  CHECK(ReadText(path) == "version = 3\nts4_resolution_scale = \"3\"\nmnk_mode = true\n");
 }
 
 TEST_CASE("The file version reads only an integer `version` key") {

@@ -67,6 +67,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 EXE = ROOT / "out/build/win-amd64-relwithdebinfo/topspin4.exe"
 LOCK = ROOT / "analysis/game-run.lock"
+NATIVE_UNAVAILABLE_EXIT_CODE = 0x4E415456  # kNativeUnavailableExitCode in src/native/native_unavailable.h
 
 # The judgement every scene uses unless its [check] overrides a value.
 DEFAULTS = {
@@ -484,6 +485,9 @@ def run_game(label, scene, out, exe, extra_flags=(), frames=None, install=ROOT):
              if (dumps / dump["file"]).exists()}
     print(f"  {label}: {len(shots)}/{len(frames)} captures, exit code {proc.returncode}",
           flush=True)
+    if proc.returncode == NATIVE_UNAVAILABLE_EXIT_CODE:
+        print(f"  {label}: Native could not start; its log says why (native renderer: cannot start)",
+              flush=True)
     return shots, report
 
 

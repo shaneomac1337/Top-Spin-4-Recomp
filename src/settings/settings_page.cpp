@@ -244,10 +244,6 @@ void Apply(const SettingChange& change) {
 SettingsModel BuildModel() {
   ModelContext context;
   context.renderer = std::string(topspin4::native::IsEnabled() ? kRendererNative : kRendererClassic);
-  if (topspin4::native::Requested() && !topspin4::native::IsEnabled()) {
-    context.renderer_fallback =
-        "Native could not start this session (see the log), so the game draws with Classic.";
-  }
   context.pinned = g.session.pinned;
   context.safe_start = g.session.safe_start;
   context.sections = {Section::kGraphics, Section::kControls};

@@ -32,9 +32,9 @@ struct Preset {
 
 // The 360 game's own behaviour for each setting whose default is not (ADR-0011). The Original
 // Preset takes its covered settings from here, and a Safe start runs on all of them. A setting
-// not listed already defaults to the original.
+// not listed already defaults to the original. The renderer isn't listed: a Safe start draws with
+// Native too, since Classic crashes on Intel's Vulkan drivers (ADR-0005).
 inline constexpr std::pair<std::string_view, std::string_view> kOriginalValues[] = {
-    {"ts4_renderer", kRendererClassic},
     {"ts4_resolution_scale", "1"},
     {"ts4_anisotropic_filtering", "original"},
     {"ts4_fix_glitches", "false"},

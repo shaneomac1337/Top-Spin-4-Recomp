@@ -25,7 +25,7 @@ public sealed class SettingsPageModelTests : IDisposable
 
         Assert.Equal(["Graphics", "Controls"], page.Tabs.Select(tab => tab.Name));
         Assert.Equal(
-            ["graphics_preset", "ts4_renderer", "ts4_resolution_scale", "ts4_msaa", "ts4_anisotropic_filtering", "ts4_sharpening"],
+            ["graphics_preset", "ts4_resolution_scale", "ts4_msaa", "ts4_anisotropic_filtering", "ts4_sharpening"],
             page.Tabs[0].Rows.Select(row => row.Key));
         Assert.Equal(["mnk_mode", "ts4_pad_a", "keybind_a", "reset_controls"], page.Tabs[1].Rows.Select(row => row.Key));
     }
@@ -78,11 +78,10 @@ public sealed class SettingsPageModelTests : IDisposable
     }
 
     [Fact]
-    public void A_fresh_install_shows_the_default_renderer_and_its_rows_without_a_settings_file()
+    public void A_fresh_install_shows_Natives_rows_without_a_settings_file()
     {
         var page = Page(ShippedExport());
 
-        Assert.Equal("Native (recommended)", Row(page, "ts4_renderer").ValueLabel);
         Assert.True(Row(page, "ts4_msaa").Available);
         Assert.Equal("Default", Row(page, "graphics_preset").ValueLabel);
     }
@@ -98,12 +97,9 @@ public sealed class SettingsPageModelTests : IDisposable
     }
 
     [Fact]
-    public void The_renderer_row_has_plain_options_and_shows_the_default_when_there_is_no_settings_file()
+    public void The_renderer_has_no_row_players_stay_on_Native()
     {
-        var renderer = Row(Page(), "ts4_renderer");
-
-        Assert.Equal(["Classic (compatibility)", "Native (recommended)"], renderer.Options.Select(option => option.Label));
-        Assert.Equal("Classic (compatibility)", renderer.ValueLabel);
+        Assert.DoesNotContain(Page().Tabs.SelectMany(tab => tab.Rows), row => row.Key == "ts4_renderer");
     }
 
     [Fact]
@@ -113,7 +109,6 @@ public sealed class SettingsPageModelTests : IDisposable
 
         var page = Page();
 
-        Assert.Equal("Native (recommended)", Row(page, "ts4_renderer").ValueLabel);
         Assert.Equal("original", Row(page, "ts4_msaa").Value);
     }
 
@@ -217,9 +212,9 @@ public sealed class SettingsPageModelTests : IDisposable
         WriteSettings(Before);
         var page = Page();
 
-        Assert.Equal(SettingChange.Saved, page.Choose(Row(page, "ts4_renderer"), "native"));
+        Assert.Equal(SettingChange.Saved, page.Choose(Row(page, "ts4_msaa"), "8"));
 
-        Assert.Equal(Before.Replace("ts4_renderer = \"classic\"", "ts4_renderer = \"native\""), File.ReadAllText(SettingsPath));
+        Assert.Equal(Before.Replace("ts4_msaa = \"4\"", "ts4_msaa = \"8\""), File.ReadAllText(SettingsPath));
         Assert.False(File.Exists(SettingsPath + ".tmp"));
     }
 
@@ -250,7 +245,6 @@ public sealed class SettingsPageModelTests : IDisposable
         Assert.Contains("unknown_key = 5\n", file);
         Assert.Contains("mnk_mode = false\n", file);
         Assert.Equal("original", Row(page, "graphics_preset").Value);
-        Assert.Equal("Classic (compatibility)", Row(page, "ts4_renderer").ValueLabel);
     }
 
     [Fact]

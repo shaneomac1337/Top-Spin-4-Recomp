@@ -102,7 +102,7 @@ public sealed class PipelineOutputTests
         Assert.Equal("vulkan_setup", result.Reason);
         Assert.False(result.Usable);
         Assert.Contains("Vulkan", result.Message);
-        Assert.Contains("Classic", result.Message);
+        Assert.DoesNotContain("Classic", result.Message);
         Assert.DoesNotContain("on Native", result.Message);
     }
 

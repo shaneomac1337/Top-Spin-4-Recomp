@@ -86,7 +86,7 @@ public sealed class ShaderPreparationTests : IDisposable
         var error = Assert.Throws<ShaderPreparationException>(() => Run(withModules: true));
 
         Assert.Contains("The game stopped before it had read the Modules", error.Message);
-        Assert.Contains("Classic", error.Message);
+        Assert.Contains("try again", error.Message);
         Assert.DoesNotContain(ShaderPackFile.FileName, CacheEntries());
     }
 
@@ -113,7 +113,7 @@ public sealed class ShaderPreparationTests : IDisposable
         var error = Assert.Throws<ShaderPreparationException>(() => Run());
 
         Assert.Contains("XenosRecomp could not convert 2 shaders.", error.Message);
-        Assert.Contains("Classic", error.Message);
+        Assert.Contains("try again", error.Message);
         Assert.Empty(CacheEntries());
     }
 
@@ -156,7 +156,7 @@ public sealed class ShaderPreparationTests : IDisposable
         var error = Assert.Throws<ShaderPreparationException>(() => Run());
 
         Assert.Contains("XenosRecomp", error.Message);
-        Assert.Contains("Classic", error.Message);
+        Assert.Contains("try again", error.Message);
         Assert.DoesNotContain(ShaderPackFile.FileName, CacheEntries());
     }
 
@@ -180,7 +180,7 @@ public sealed class ShaderPreparationTests : IDisposable
         var error = Assert.Throws<ShaderPreparationException>(() => Run());
 
         Assert.Contains("Arena.arc", error.Message);
-        Assert.Contains("Classic", error.Message);
+        Assert.Contains("try again", error.Message);
     }
 
     [Fact]
@@ -190,7 +190,7 @@ public sealed class ShaderPreparationTests : IDisposable
 
         var error = Assert.Throws<ShaderPreparationException>(() => Run());
 
-        Assert.Contains("Classic", error.Message);
+        Assert.Contains("try again", error.Message);
         Assert.Empty(CacheEntries());
     }
 
@@ -227,7 +227,7 @@ public sealed class ShaderPreparationTests : IDisposable
 
         Assert.True(status.NeedsPreparing);
         Assert.Equal(ShaderPackProblem.Stale, status.Pack.Problem);
-        Assert.Contains("Classic", status.Message);
+        Assert.Contains("prepared again", status.Message);
     }
 
     [Fact]

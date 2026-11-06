@@ -9,7 +9,7 @@ public enum PipelineRebuild
 {
     /// <summary>The last prepare still matches its inputs.</summary>
     None,
-    /// <summary>No usable shader pack: there is nothing to build pipelines from (the game runs on Classic).</summary>
+    /// <summary>No usable shader pack: there is nothing to build pipelines from (the game can't start).</summary>
     NoShaderPack,
     /// <summary>Repair rebuilds whatever the state.</summary>
     Repair,

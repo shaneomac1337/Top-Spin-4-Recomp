@@ -28,7 +28,7 @@ inline bool IsLaunchOption(std::string_view key) {
 
 // Reads the Settings file into the cvars, and hands the Settings page what it needs: the file's
 // values and the pinned settings. Safe start (--safe): the file is neither read, migrated, set
-// aside nor written, every setting runs at the 360 game's own behaviour (Classic, the Original
+// aside nor written, every setting runs at the 360 game's own behaviour (the Original
 // values, presets.h) unless given as a Launch option, and the page's changes last until the game
 // closes. Call once, from OnPostInitLogging.
 inline LoadReport StartSession(const std::filesystem::path& path, bool safe_start) {

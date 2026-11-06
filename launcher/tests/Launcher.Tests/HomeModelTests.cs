@@ -135,7 +135,21 @@ public sealed class HomeModelTests : IDisposable
     }
 
     [Fact]
-    public void After_a_gpu_failure_exit_the_status_says_switch_renderer_and_safe_start_is_prominent()
+    public void When_Native_cannot_start_the_note_says_so_and_safe_start_is_not_offered_as_the_way_out()
+    {
+        var home = new HomeModel(PreparedCache(), GameExe());
+
+        home.SessionEnded(GameExitReport.NativeUnavailableExitCode);
+
+        Assert.Equal(HomeStatus.NativeUnavailable, home.Status);
+        Assert.True(home.CanPlay);
+        Assert.Contains("graphics card", home.Note);
+        Assert.False(home.SafeStartProminent);
+        Assert.Null(home.CrashReportPath);
+    }
+
+    [Fact]
+    public void After_a_gpu_failure_exit_the_note_says_update_the_driver_and_safe_start_is_prominent()
     {
         var home = new HomeModel(PreparedCache(), GameExe());
 
@@ -143,7 +157,7 @@ public sealed class HomeModelTests : IDisposable
 
         Assert.Equal(HomeStatus.LastSessionGpuFailure, home.Status);
         Assert.True(home.CanPlay);
-        Assert.Contains("Switch the renderer", home.Note);
+        Assert.Contains("Update the graphics driver", home.Note);
         Assert.True(home.SafeStartProminent);
         Assert.Null(home.CrashReportPath);
         Assert.DoesNotContain(HomeAction.OpenCrashReport, home.Actions);

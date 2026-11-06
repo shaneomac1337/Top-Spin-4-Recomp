@@ -14,16 +14,19 @@ public sealed class SettingsStore(SettingsSchema schema, string settingsPath)
 
     private string ReadFile() => File.Exists(SettingsPath) ? File.ReadAllText(SettingsPath) : "";
 
+    // What the game reads: it migrates the file before applying it, so a value a migration replaces counts as replaced.
+    private string ReadMigrated() => SettingsFile.Migrate(ReadFile(), schema.FileVersion);
+
     private static string ValueIn(string text, SettingDescription setting) =>
         SettingsFile.ValueOf(text, setting.Key) is { } value && setting.Allows(value) ? value : setting.Default;
 
     /// <summary>The value the game will read: the file's, or the default when it has none or the game would refuse it.</summary>
-    public string ValueOf(SettingDescription setting) => ValueIn(ReadFile(), setting);
+    public string ValueOf(SettingDescription setting) => ValueIn(ReadMigrated(), setting);
 
     /// <summary>Every setting's value by key, from one read of the file.</summary>
     public IReadOnlyDictionary<string, string> Values()
     {
-        var text = ReadFile();
+        var text = ReadMigrated();
         return Settings.ToDictionary(setting => setting.Key, setting => ValueIn(text, setting));
     }
 

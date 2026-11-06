@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -87,6 +88,9 @@ extern Context g_vk;
 
 // Loads the extra functions and creates the heaps and the pipeline layout.
 bool InitializeContext(const rex::ui::vulkan::VulkanDevice* device, rex::memory::Memory* memory);
+
+// The Vulkan features the device lacks, comma-separated, after InitializeContext refused it.
+const std::string& MissingFeatures();
 
 // Host pointer to guest physical memory (fetch constants hold physical addresses).
 const uint8_t* TranslatePhysical(uint32_t physical_address);

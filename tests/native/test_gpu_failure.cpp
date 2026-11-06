@@ -15,8 +15,7 @@ TEST_CASE("the GPU failure exit code is the one the launcher reads") {
 
 TEST_CASE("the GPU failure line names the Vulkan result and the call in the launcher's format") {
   CHECK(GpuFailureLine(-4, "vkQueueSubmit") ==
-        "native renderer: gpu failure VK_ERROR_DEVICE_LOST (vkQueueSubmit); ending the session. "
-        "Switch the renderer to Emulated in the launcher if this repeats.");
+        "native renderer: gpu failure VK_ERROR_DEVICE_LOST (vkQueueSubmit); ending the session.");
 }
 
 TEST_CASE("Vulkan results by name, and an unknown one by number") {

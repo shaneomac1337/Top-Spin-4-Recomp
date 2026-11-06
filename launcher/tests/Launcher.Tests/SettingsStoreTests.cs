@@ -105,6 +105,19 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void A_saved_Classic_reads_as_Native_before_the_file_is_migrated()
+    {
+        const string Before = "version = 2\nts4_renderer = \"classic\"\n";
+        Directory.CreateDirectory(_folder);
+        File.WriteAllText(SettingsPath, Before);
+        var store = new SettingsStore(SettingsSchema.Parse(Export(3)), SettingsPath);
+
+        Assert.Equal("native", store.Values()["ts4_renderer"]);
+        Assert.Equal("native", store.ValueOf(store.Settings[0]));
+        Assert.Equal(Before, File.ReadAllText(SettingsPath));
+    }
+
+    [Fact]
     public void The_version_written_and_the_newer_check_come_from_the_export()
     {
         var schema = SettingsSchema.Parse(Export(3));
@@ -233,10 +246,10 @@ public sealed class SettingsStoreTests : IDisposable
     }
 
     [Fact]
-    public void The_gpu_failure_exit_code_maps_to_the_switch_renderer_message()
+    public void The_gpu_failure_exit_code_maps_to_the_update_driver_message()
     {
         Assert.Equal(0x47505546, GameExitReport.GpuFailureExitCode);
-        Assert.Contains("Switch the renderer", GameExitReport.FromExit(0x47505546, null).Message);
+        Assert.Contains("Update the graphics driver", GameExitReport.FromExit(0x47505546, null).Message);
         Assert.Equal(GameExitKind.Closed, GameExitReport.FromExit(0, null).Kind);
     }
 

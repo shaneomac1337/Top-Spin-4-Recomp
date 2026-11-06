@@ -21,7 +21,7 @@ public enum SetupPhase
 /// holding the one file the player chose and the result of checking it, and how preparation went. Preparation ends
 /// with the shaders band (<see cref="ShaderPreparation"/>) and the pipelines band (<see cref="PipelinePreparation"/>)
 /// when the flow has them: "set up" then means the disc, Title Update 1, a usable shader pack and a pipeline store that
-/// is not stale. Neither step stops Play when it fails: without a pack the game runs on Classic, and without a store
+/// is not stale. Neither step disables Play when it fails: without a pack the game says so and ends, and without a store
 /// the pipelines build during play.
 /// A file is checked the moment it is chosen, and nothing is chosen for the player. The window only
 /// draws it. It asks only for the input the prepared files lack, so a setup that stopped part way resumes.
@@ -102,8 +102,8 @@ public sealed class SetupFlow
     public SetupError? Error { get; private set; }
 
     /// <summary>
-    /// Why the shader step failed on the last preparation, in the player's terms (it also says Play still starts the game on Classic);
-    /// null when it ran well or did not run. A failure here does not stop Play.
+    /// Why the shader step failed on the last preparation, in the player's terms (it also says how to try again);
+    /// null when it ran well or did not run. A failure here does not disable Play.
     /// </summary>
     public string? ShaderFailure { get; private set; }
 
@@ -389,7 +389,7 @@ public sealed class SetupFlow
         _shaders is null ? ShaderPackProblem.None : _shaders.StatusOf(_preparation.ShaderCacheDirectory).Pack.Problem;
 
     // The shader step, as one band of the overall progress. A failure is shown (ShaderFailure) and never throws: the files are
-    // set up, and without a pack the game runs on Classic. A cancel is the setup's own cancel.
+    // set up, and the next Launcher start tries again. A cancel is the setup's own cancel.
     private void RunShaders(PreparedData prepared, IProgress<SetupProgress> progress, CancellationToken cancel)
     {
         const long Scale = 1000;
