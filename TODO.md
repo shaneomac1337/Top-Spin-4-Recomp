@@ -16,6 +16,18 @@ before starting.
   compiled no pipelines and spent about 3 ms in the renderer. The cause isn't known.
 - **Issue #2, two-GPU laptops.** Asked the reporter for the crash zip and a `REX_VULKAN_DEVICE=1`
   run. The discrete-GPU fix is on `fix/prefer-discrete-gpu`, unconfirmed on a real hybrid laptop.
+- **Issue #5, Classic crash on 11th-gen Intel.** The 1.0.0 crash zip ran on the Intel (`0x9A68`,
+  driver 101.2079, May 2022), not the RTX 3060. Native refused it: `shaderInt64` is the only gate
+  feature missing from its log (`src/native/vk_context.cpp:153`). Classic then faulted inside
+  `igvk64` at the first swap, reading `FFFFFFFFFFFFFFFF` in `vkCmdBeginRendering`
+  (`deferred_command_buffer.cpp:225`). The call on the stack has one colour attachment and no depth
+  or stencil, and looks valid. Driver bug or bad handle is unknown. Patch 0047 moves this player to
+  the NVIDIA, which avoids the crash path but doesn't fix it for Intel-only PCs. Next: the
+  ProBook's HD 520, Classic on the default preset; if it crashes, retry Safe start, then
+  `--vulkan_dynamic_rendering=false`.
+- **Launcher wording for Native's gate.** "Vulkan could not start on this graphics card"
+  (`launcher/src/Launcher.Core/PipelineOutput.cs:84`) also shows when Vulkan works and only Native's
+  feature gate refuses the GPU. The #5 reporter read it as no Vulkan support.
 - **Intermittent hang entering Swing, one form unexplained.** Patch 0048 fixes the ring race behind
   the 2026-11-06 freeze (packet overflows at the Swing load, GPU thread in `WAIT_REG_MEM`, loading
   thread in `sub_88292718`), though that freeze itself was never reproduced on demand. The
