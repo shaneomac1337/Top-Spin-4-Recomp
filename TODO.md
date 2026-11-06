@@ -6,17 +6,22 @@ before starting.
 
 ## Next
 
-- **Issue #3, Steam Deck court graphics.** Kiev is clean on Native at 2560x1440 on the RX 7900 XT.
-  Still to run: Seoul, then Seoul at `--ts4_native_window_size=1280x800`. If it shows, capture it in
-  RenderDoc; if not, ask the reporter for the session log and whether Classic shows it.
+- **Issue #3, Steam Deck court graphics.** Doesn't show on the RX 7900 XT: Kiev and Seoul are clean
+  on Native at 2560x1440, and Seoul at `--ts4_native_window_size=1280x800` (2026-11-06). Next: the
+  owner's own Deck under Proton, then the reporter's session log and whether Classic shows it.
 - **Issue #2, two-GPU laptops.** Asked the reporter for the crash zip and a `REX_VULKAN_DEVICE=1`
   run. The discrete-GPU fix is on `fix/prefer-discrete-gpu`, unconfirmed on a real hybrid laptop.
-- **Intermittent hang entering Swing.** Seen once in two 1.0.0 Native runs (2026-11-05): the main
-  thread spins in `sub_88291558` (from `sub_88292000`) right after
+- **Intermittent hang entering Swing, one form unexplained.** Patch 0048 fixes the ring race behind
+  the 2026-11-06 freeze (packet overflows at the Swing load, GPU thread in `WAIT_REG_MEM`, loading
+  thread in `sub_88292718`), though that freeze itself was never reproduced on demand. The
+  2026-11-05 form differs: the main thread spins in `sub_88291558` (from `sub_88292000`) right after
   `SetInterruptCallback(88292A60, ...)`, polling what looks like the GPU's ring read position. The
-  next run got through. Leave it open if it recurs, and take stacks with `scripts\lldb.cmd`.
-- **`sdk_version` rewritten by the build.** `build.ps1 -Action Build` changed it to `1.0.0` in
-  `topspin4_manifest.toml`, though ReXGlue is 0.10.0. Don't commit it; the cause is unknown.
+  same race could cause it, unproven. If any hang recurs, leave the game open, take stacks with
+  `scripts\lldb.cmd`, and read `poll_reg_addr`, `ref` and `mask` in `WAIT_REG_MEM`.
+- **Ring move drops old-ring work.** 0048 abandons packets still queued on the old ring when a
+  Module moves it. A dropped swap would leave `GuestSwapCount` one ahead for the session, and a
+  dropped fence write could strand a waiting thread. Neither has been seen, and the logs can't
+  rule them out, since `ExecutePrimaryBuffer` returns the write index even when it abandons a batch.
 - **Online play (issue #1).** Revive Player Match (`docs/goals.md`, After 1.0). WWE All Stars'
   online work is the starting point (`docs/adr/0021-online-play-revived.md` in that repo).
 - **Code-sign the release.** Defender's ML verdict that deleted XenosRecomp came from the game exe

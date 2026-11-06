@@ -7,6 +7,8 @@ All notable changes to this project are recorded here, in the [Keep a Changelog]
 ### Fixed
 
 - On a PC with two GPUs, such as a gaming laptop, the game picks the discrete card instead of the first one Windows lists, which was often the integrated one. The shaders' pipeline cache is rebuilt once on those PCs.
+- A freeze on the loading screen after the title screen, which happened on some launches: the GPU thread could run commands from memory the game hadn't written yet when the game moved its GPU command ring.
+- Building from source stopped at configure on any commit after the `v1.0.0` tag, and a build on that tag rewrote `sdk_version` in `topspin4_manifest.toml`: the SDK took its version from the game's git tags instead of its own.
 
 ### Changed
 
