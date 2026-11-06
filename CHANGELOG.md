@@ -9,9 +9,12 @@ All notable changes to this project are recorded here, in the [Keep a Changelog]
 - On a PC with two GPUs, such as a gaming laptop, the game picks the discrete card instead of the first one Windows lists, which was often the integrated one. The shaders' pipeline cache is rebuilt once on those PCs.
 - A freeze on the loading screen after the title screen, which happened on some launches: the GPU thread could run commands from memory the game hadn't written yet when the game moved its GPU command ring.
 - Building from source stopped at configure on any commit after the `v1.0.0` tag, and a build on that tag rewrote `sdk_version` in `topspin4_manifest.toml`: the SDK took its version from the game's git tags instead of its own.
+- The game no longer needs the Microsoft Visual C++ runtime installed: it ships beside the game and the shader converter. Without it, the shader step failed and the game could not start.
 
 ### Changed
 
+- Players always get the Native renderer. Safe start and the Original preset use it too, the Renderer setting is gone from both Settings pages, and a saved Classic becomes Native. Classic crashed on Intel's Vulkan drivers within seconds of starting.
+- When Native can't start, the game says why and ends instead of switching to Classic: the graphics card lacks a Vulkan feature it needs, Vulkan could not be set up, or the shaders are missing.
 - Help says to attach the crash report before using Safe start, and that the newest log may be Safe start's own.
 
 ## [1.0.0] - 2026-11-01

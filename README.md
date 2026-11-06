@@ -21,7 +21,9 @@ refuses anything else.
 | --- | --- |
 | Played and working | Exhibition singles and doubles, Career from the Player Creator on, Top Spin Academy, King of the Court, local multiplayer, saves |
 | My hardware | Windows 11 with an AMD Radeon RX 7900 XT |
-| Not tested yet | NVIDIA and Intel GPUs, Windows 10, Steam Deck |
+| Also played | Intel HD Graphics 520 (Exhibition, slow) |
+| Not tested yet | NVIDIA GPUs, other Intel GPUs, Windows 10, Steam Deck |
+| Can't run yet | Intel GPUs without the Vulkan feature `shaderInt64`, such as 11th-gen integrated graphics. If the PC also has an NVIDIA or AMD card, the game uses that |
 | Not supported | Online multiplayer. Player Match and World Tour say they're unavailable |
 
 It runs at the game's original 60 fps. Anything not in the table can still crash. If it does,
@@ -44,18 +46,18 @@ open an [issue](../../issues/new) and attach the crash report or the log.
 
 ## What the PC version adds
 
-### Two renderers
+### The renderer
 
-Native is the default. It draws the game's Direct3D 9 calls with Vulkan instead of emulating
-the Xbox 360 GPU, and it's the one the image settings need. Classic emulates the console's GPU
-the way Xenia does. I keep it as a fallback, and as the reference I check Native against.
+The game draws with Native: its Direct3D 9 calls go to Vulkan instead of an emulated Xbox 360
+GPU. Classic, which emulates the console's GPU the way Xenia does, is no longer a player option.
+I keep it only as the reference I check Native against.
 
 ### Graphics presets
 
 | Preset | What it sets |
 | --- | --- |
-| Original | The Xbox 360 look: Classic, the console's 1280x720, its own texture filtering |
-| Default | What a new install starts on: Native, Resolution scale Auto, 16x anisotropic filtering, the white flash after loading screens fixed |
+| Original | The Xbox 360 look: the console's 1280x720, its own texture filtering |
+| Default | What a new install starts on: Resolution scale Auto, 16x anisotropic filtering, the white flash after loading screens fixed |
 | Enhanced | Default plus 4x MSAA |
 
 Resolution scale Auto draws the game at the smallest multiple of 1280x720 that covers your
@@ -157,7 +159,7 @@ Title Update 1 on your console is in [HELP.md](HELP.md).
 | --- | --- |
 | The game won't start | Use Safe start in the Launcher, under "Trouble starting?" |
 | It crashed | The Launcher comes back with Open crash report. Attach it to an issue |
-| The graphics look wrong | Switch the renderer to Classic in Settings |
+| The graphics look wrong | Open an issue and attach the newest log |
 | Anything else | Open logs in the Launcher and attach the newest log to an issue |
 
 There's more in [HELP.md](HELP.md). It's the same file the Launcher's Help button opens.

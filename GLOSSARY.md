@@ -60,7 +60,7 @@ Behaviour present on the real console. It is kept by default, not fixed.
 ## Presentation
 
 **Classic renderer**:
-The renderer that draws the game through ReXGlue's emulation-style GPU path. It is the reference renderer.
+The renderer that draws the game through ReXGlue's emulation-style GPU path. It is the reference renderer: scene runs use it, and players do not (ADR-0005).
 
 **Native renderer**:
 The renderer that turns the game's Direct3D 9 calls into native Vulkan work and owns render targets.
@@ -104,7 +104,7 @@ A setting given when the game is started, on the command line or in the environm
 _Avoid_: override, flag (when the player-facing idea is meant)
 
 **Safe start**:
-A session that runs every setting at original behaviour, on the Classic renderer, without changing the Settings file.
+A session that runs every setting at original behaviour, on the Native renderer, without changing the Settings file.
 _Avoid_: reset (that changes the file)
 
 **Preset**:

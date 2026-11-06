@@ -15,32 +15,30 @@ before starting.
   7% of frames logged as hitches at a median of 33 ms and 1,058 in its last minute. The last hitch
   compiled no pipelines and spent about 3 ms in the renderer. The cause isn't known.
 - **Issue #2, two-GPU laptops.** Asked the reporter for the crash zip and a `REX_VULKAN_DEVICE=1`
-  run. The discrete-GPU fix is on `fix/prefer-discrete-gpu`, unconfirmed on a real hybrid laptop.
-- **Issue #5, Classic crash on 11th-gen Intel.** The 1.0.0 crash zip ran on the Intel (`0x9A68`,
-  driver 101.2079, May 2022), not the RTX 3060. Native refused it: `shaderInt64` is the only gate
-  feature missing from its log (`src/native/vk_context.cpp:153`). Classic then faulted inside
-  `igvk64` at the first swap, reading `FFFFFFFFFFFFFFFF` in `vkCmdBeginRendering`
-  (`deferred_command_buffer.cpp:225`). The call on the stack has one colour attachment and no depth
-  or stencil, and looks valid. Driver bug or bad handle is unknown. Patch 0047 moves this player to
-  the NVIDIA, which avoids the crash path but doesn't fix it for Intel-only PCs.
-  Reproduced 2026-11-06 on the owner's ProBook 650 G2 (HD 520 `0x1916`, driver 101.2111, Windows
-  build 26100, `deck-test`). Classic on Safe start crashes about 2 s in with the same call and
-  arguments. `--vulkan_dynamic_rendering=false` crashes in `vkCmdDraw` instead, and
-  `--async_shader_compilation=false` crashes in `vkCmdBeginRendering` again, so neither is the
-  cause. Native ran 5.6 minutes there, Exhibition included (match on the owner's word). The #2
-  UHD 630 survived Classic on Safe start on driver 101.2141. Next: `--vulkan_validation_enabled`
-  on the ProBook, then driver 101.2115.
-- **Visual C++ runtime isn't shipped.** On a PC without it, `topspin4.exe` and
-  `xenosrecomp\XenosRecomp.exe` can't start (`0xC0000135`, seen on the ProBook). The Launcher reports
-  "The game stopped before it had read the shaders" and that Play still works on Classic. Ship the
-  DLLs beside both, or otherwise cover both, and name a missing DLL in that message. Check on a clean
-  PC; the ProBook now has the runtime installed.
+  run. Patch 0047 prefers the discrete GPU, unconfirmed on a real hybrid laptop.
+- **Issue #5, 11th-gen Intel.** The 1.0.0 crash zip ran on the Intel (`0x9A68`, driver 101.2079), not
+  the RTX 3060. Native refused it for lacking `shaderInt64`, then Classic crashed. Patch 0047 should
+  move this player to the NVIDIA. Waiting on 1.0.1 and the reporter.
+- **Native on Intel GPUs without `shaderInt64`.** They now get a clear message instead of Classic
+  (ADR-0005). The converted shaders take 64-bit addresses (`shader_common.h:51-53`), so running there
+  means changing the shader converter. Do it only if more of these players report in.
+- **Classic crash on Intel, not fixed.** Classic faults inside `igvk64` about 2 s in at
+  `vkCmdBeginRendering` (`deferred_command_buffer.cpp:225`), with one colour attachment and no depth.
+  The value it loads at `+0x28` of a 1280x2048 object is stale text. Reproduced on an HD 520
+  (driver 101.2111). `--vulkan_dynamic_rendering=false` moves it to `vkCmdDraw`,
+  `--async_shader_compilation=false` doesn't help, and `--render_target_path_vulkan=fsi` avoids it but
+  is too slow there. [SpartanPort #1126](https://github.com/FelipePrado0/SpartanPort/issues/1126)
+  shows the same offset (`+0x5cfab2`) on 101.2115. Players no longer reach Classic, so this only
+  matters to a developer running scenes on Intel.
+- **Launcher may outlive its window.** On the ProBook a `topspin4-launcher` process had no visible
+  window and kept using a little CPU after the owner said it was closed. Closing was not observed, so
+  this is unconfirmed.
+- **Visual C++ runtime on a clean PC.** `scripts/package.ps1` now ships the DLLs beside
+  `topspin4.exe` and `xenosrecomp\XenosRecomp.exe`, and the Launcher names a missing DLL. Check on a
+  clean PC; the ProBook now has the runtime installed.
 - **2-core CPUs and integrated GPUs.** "Too few processor cores" logs on every thread CPU change
   below 6 logical CPUs (`xthread.cpp:914`): 44,209 lines in 5.6 minutes on the ProBook. Its cost isn't
   measured. The default Resolution scale also picked 2x (2560x1440) on the HD 520 and on #5's Intel.
-- **Launcher wording for Native's gate.** "Vulkan could not start on this graphics card"
-  (`launcher/src/Launcher.Core/PipelineOutput.cs:84`) also shows when Vulkan works and only Native's
-  feature gate refuses the GPU. The #5 reporter read it as no Vulkan support.
 - **Intermittent hang entering Swing, one form unexplained.** Patch 0048 fixes the ring race behind
   the 2026-11-06 freeze (packet overflows at the Swing load, GPU thread in `WAIT_REG_MEM`, loading
   thread in `sub_88292718`), though that freeze itself was never reproduced on demand. The

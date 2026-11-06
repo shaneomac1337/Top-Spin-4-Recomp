@@ -29,7 +29,7 @@ Every setting is in the Launcher's **Settings**, one tab per section, so you can
 
 To quit, choose **EXIT TO DESKTOP** in the main menu, or close the window.
 
-A fresh install starts on the **Default** Graphics preset: the Native renderer, Resolution scale Auto, 16x anisotropic filtering, and the original game's loading-screen flash fixed. **Original** sets the image settings back to the Xbox 360 game's own look, and **Enhanced** adds 4x MSAA. **60 fps cutscenes** (off by default) plays the match intro, replays and changeovers at 60 fps instead of 30, at their original speed.
+A fresh install starts on the **Default** Graphics preset: Resolution scale Auto, 16x anisotropic filtering, and the original game's loading-screen flash fixed. **Original** sets the image settings back to the Xbox 360 game's own look, and **Enhanced** adds 4x MSAA. **60 fps cutscenes** (off by default) plays the match intro, replays and changeovers at 60 fps instead of 30, at their original speed.
 
 In either Settings page, press A (or Enter) on a row to change it. To remap a key or button, press A on its row, then the key or button to use; Esc or B cancels. Changes are saved at once to the Settings file in the game folder (`userdata`), so the Launcher and the game show the same values.
 
@@ -39,14 +39,11 @@ Your **gamertag**, the name the game shows for your profile, is on the Launcher'
 
 The Launcher's **Achievements** page lists every achievement on your disc. The ones you have earned come first, newest first, with the date you earned them; locked ones are greyed out with a padlock and say how to earn them. When you earn one in the game, an "Achievement unlocked" notice slides in at the bottom of the screen. Your unlocks are saved in the game folder (`userdata\achievements`).
 
-## Renderer
-
-- **Native (recommended)** draws with the port's own renderer.
-- **Classic (compatibility)** uses the original renderer. Switch to it if the game does not start or the graphics card stops working. The change takes effect the next time the game starts.
-
 ## If the game will not start
 
-Open the Launcher and use **Safe start** under "Trouble starting?". It runs one session on the Classic renderer with every setting at the original game's behaviour, and leaves your Settings file unchanged.
+Open the Launcher and use **Safe start** under "Trouble starting?". It runs one session with every setting at the original game's behaviour, and leaves your Settings file unchanged.
+
+If the game says it can't run on your graphics card, Safe start won't help: that card lacks a Vulkan feature the game needs. Update the graphics driver. On a PC with two graphics cards, the game uses the discrete one.
 
 After a crash or a graphics failure the Launcher comes back with Safe start up front, and after a crash with **Open crash report** to attach to your issue. Attach the report before you use Safe start: the button goes away once a session closes normally. The report stays in the `logs` folder as `crash-*.zip`.
 
