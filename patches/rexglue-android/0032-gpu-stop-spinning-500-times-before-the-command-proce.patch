@@ -1,0 +1,170 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ts4-port <ts4-port@localhost>
+Date: Thu, 5 Nov 2026 17:45:41 +1000
+Subject: [PATCH 32/35] gpu: stop spinning 500 times before the command
+ processor blocks
+
+The idle loop yielded 500 times before its first wait, and again after every
+wake, so an idle GPU burned 11-19% of a core doing nothing. The guest signals
+write_ptr_index_event_ from UpdateWritePointer, so a wait returns immediately
+when there is work; the timeout only bounds how long a CallInThread callback
+(which does not signal) can sit. Spin 32 times, then wait 1 ms for the first few
+rounds and 5 ms after that.
+
+Also adds two diagnostics, both off by default, for the UI-thread core measured
+on 2026-11-05: log_event_loop (events/s and what drives them) and log_input_pump
+(rate and duration of the SDL pump the guest's pad polling forces on the UI
+thread). Measured: the loop runs ~137 events/s, all wakeups, zero paints.
+---
+ src/graphics/command_processor.cpp  | 14 ++++++++---
+ src/input/sdl/sdl_input_driver.cpp  | 37 +++++++++++++++++++++++++++++
+ src/ui/windowed_app_context_sdl.cpp | 27 +++++++++++++++++++++
+ 3 files changed, 75 insertions(+), 3 deletions(-)
+
+diff --git a/src/graphics/command_processor.cpp b/src/graphics/command_processor.cpp
+index 8f7db94..153835c 100644
+--- a/src/graphics/command_processor.cpp
++++ b/src/graphics/command_processor.cpp
+@@ -238,6 +238,10 @@ void CommandProcessor::SetDesiredSwapPostEffect(SwapPostEffect swap_post_effect)
+   CallInThread([this, swap_post_effect]() { swap_post_effect_actual_ = swap_post_effect; });
+ }
+ 
++// How many times the idle loop yields before it blocks on the event. The guest signals the event
++// when it submits, so this only covers a submission that lands just after the loop looked.
++constexpr uint32_t kSpinIterations = 32;
++
+ void CommandProcessor::WorkerThreadMain() {
+   if (!SetupContext()) {
+     rex::FatalError("Unable to setup command processor internal state");
+@@ -279,9 +283,13 @@ void CommandProcessor::WorkerThreadMain() {
+       PrepareForWait();
+       uint32_t loop_count = 0;
+       do {
+-        // If we spin around too much, revert to a "low-power" state.
+-        if (loop_count > 500) {
+-          const int wait_time_ms = 5;
++        // The guest signals write_ptr_index_event_ from UpdateWritePointer, so a wait here
++        // returns immediately when there is work; the timeout only bounds how long a
++        // CallInThread callback can sit (it does not signal the event). Spinning first is
++        // therefore only worth a few iterations -- 500 of them, repeated after every wake,
++        // burned 11-19% of a core while the GPU was idle (PLAN.md, 2026-11-05).
++        if (loop_count >= kSpinIterations) {
++          const int wait_time_ms = loop_count < kSpinIterations + 4 ? 1 : 5;
+           rex::thread::Wait(write_ptr_index_event_.get(), true,
+                             std::chrono::milliseconds(wait_time_ms));
+         }
+diff --git a/src/input/sdl/sdl_input_driver.cpp b/src/input/sdl/sdl_input_driver.cpp
+index c7c440d..97e36bb 100644
+--- a/src/input/sdl/sdl_input_driver.cpp
++++ b/src/input/sdl/sdl_input_driver.cpp
+@@ -10,6 +10,8 @@
+  */
+ 
+ #include <array>
++#include <atomic>
++#include <chrono>
+ #include <filesystem>
+ 
+ #include <rex/assert.h>
+@@ -23,6 +25,10 @@
+ REXCVAR_DEFINE_STRING(hid_mappings_file, "gamecontrollerdb.txt", "Input",
+                       "Path to SDL gamecontroller mappings file");
+ 
++REXCVAR_DEFINE_BOOL(log_input_pump, false, "Input",
++                    "Diagnostic: log the rate and duration of the SDL event pump that the guest's "
++                    "pad polling forces on the UI thread");
++
+ namespace rex::input::sdl {
+ 
+ namespace {
+@@ -674,8 +680,39 @@ void SDLInputDriver::QueueControllerUpdate() {
+   sdl_pumpevents_queued_.compare_exchange_strong(is_queued, true);
+   if (!is_queued) {
+     attached_window_->app_context().CallInUIThread([this]() {
++      // Diagnostic: the guest polls the pad once or more per frame, and every poll forces a pump
++      // on the UI thread. Timing it says whether that pump is where the UI thread's core goes
++      // (PLAN.md, 2026-11-05: 137 pumps/s, 0 paint events, ~99% of a core).
++      const bool log_pump = REXCVAR_GET(log_input_pump);
++      const auto pump_start = std::chrono::steady_clock::now();
+       SDL_PumpEvents();
+       sdl_pumpevents_queued_ = false;
++      if (log_pump) {
++        const auto elapsed = std::chrono::steady_clock::now() - pump_start;
++        static std::atomic<uint64_t> calls{0}, total_ns{0}, max_ns{0};
++        static std::atomic<int64_t> window_start_ns{0};
++        const int64_t now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
++                                   std::chrono::steady_clock::now().time_since_epoch())
++                                   .count();
++        const uint64_t ns = uint64_t(elapsed.count());
++        const uint64_t count = calls.fetch_add(1) + 1;
++        total_ns.fetch_add(ns);
++        uint64_t previous_max = max_ns.load();
++        while (ns > previous_max && !max_ns.compare_exchange_weak(previous_max, ns)) {
++        }
++        int64_t start_ns = window_start_ns.load();
++        if (start_ns == 0) {
++          window_start_ns.store(now_ns);
++        } else if (now_ns - start_ns >= 2000000000ll) {
++          const uint64_t sum = total_ns.exchange(0);
++          const uint64_t peak = max_ns.exchange(0);
++          calls.store(0);
++          window_start_ns.store(now_ns);
++          const double seconds = double(now_ns - start_ns) / 1e9;
++          REXLOG_INFO("input pump: {:.0f} pumps/s, {:.3f} ms mean, {:.3f} ms max", count / seconds,
++                      sum / double(count) / 1e6, peak / 1e6);
++        }
++      }
+     });
+   }
+ }
+diff --git a/src/ui/windowed_app_context_sdl.cpp b/src/ui/windowed_app_context_sdl.cpp
+index 202bd49..514fda5 100644
+--- a/src/ui/windowed_app_context_sdl.cpp
++++ b/src/ui/windowed_app_context_sdl.cpp
+@@ -25,6 +25,10 @@
+ 
+ namespace rex::ui {
+ 
++REXCVAR_DEFINE_BOOL(log_event_loop, false, "UI",
++                    "Diagnostic: log how often the UI event loop runs and whether paints, wakeups "
++                    "or other events drive it (a rate far above the refresh rate is a busy loop)");
++
+ SDLWindowedAppContext::~SDLWindowedAppContext() {
+   if (event_watch_registered_) {
+     SDL_RemoveEventWatch(WatchEvent, this);
+@@ -85,12 +89,35 @@ void SDLWindowedAppContext::PlatformQuitFromUIThread() {
+ }
+ 
+ int SDLWindowedAppContext::RunMainMessageLoop() {
++  // Diagnostic: what drives the loop, and how often. An event loop that runs thousands of times a
++  // second is a busy loop, and on this device it burned a whole core (see PLAN.md, 2026-11-05).
++  const bool log_loop = REXCVAR_GET(log_event_loop);
++  uint64_t iterations = 0, paints = 0, wakeups = 0, others = 0;
++  auto window_start = std::chrono::steady_clock::now();
+   while (!HasQuitFromUIThread()) {
+     SDL_Event event;
+     if (!SDL_WaitEvent(&event)) {
+       REXLOG_ERROR("SDL_WaitEvent failed: {}", SDL_GetError());
+       return EXIT_FAILURE;
+     }
++    if (log_loop) {
++      ++iterations;
++      if (event.type == paint_event_type_) {
++        ++paints;
++      } else if (event.type == wakeup_event_type_) {
++        ++wakeups;
++      } else {
++        ++others;
++      }
++      const auto now = std::chrono::steady_clock::now();
++      const double seconds = std::chrono::duration<double>(now - window_start).count();
++      if (seconds >= 2.0) {
++        REXLOG_INFO("event loop: {:.0f} events/s ({} paint, {} wakeup, {} other)", iterations / seconds,
++                    paints, wakeups, others);
++        iterations = paints = wakeups = others = 0;
++        window_start = now;
++      }
++    }
+     ProcessEvent(event);
+   }
+   return EXIT_SUCCESS;

@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:34:10 +1000
+Subject: [PATCH 17/35] core: resolve the executable and user folders on
+ Android
+
+GetExecutableFolder() came from readlink(/proc/self/exe), which on Android is
+always /system/bin/app_process64, so the GPU plugin staged next to the runtime
+was never found. Resolve the runtime's own path with dladdr() instead, which
+lands in the app's nativeLibraryDir. GetUserFolder() preferred XDG_DATA_HOME or
+HOME, neither of which is set for an app; use the app's internal storage
+(filesDir) as SDL reports it.
+---
+ src/core/filesystem_posix.cpp | 34 ++++++++++++++++++++++++++++++++++
+ 1 file changed, 34 insertions(+)
+
+diff --git a/src/core/filesystem_posix.cpp b/src/core/filesystem_posix.cpp
+index ef5bdf4..cf4c7eb 100644
+--- a/src/core/filesystem_posix.cpp
++++ b/src/core/filesystem_posix.cpp
+@@ -24,6 +24,12 @@
+ #include <mach-o/dyld.h>
+ #endif
+ 
++#if defined(__ANDROID__)
++#include <dlfcn.h>
++
++#include <SDL3/SDL.h>
++#endif
++
+ #include <rex/assert.h>
+ #include <rex/filesystem.h>
+ #include <rex/logging.h>
+@@ -91,6 +97,16 @@ std::filesystem::path GetExecutablePath() {
+   std::error_code ec;
+   std::filesystem::path canonical_path = std::filesystem::weakly_canonical(executable_path, ec);
+   return ec ? std::filesystem::path(executable_path) : canonical_path;
++#elif REX_PLATFORM_ANDROID
++  // /proc/self/exe is /system/bin/app_process64 for every Android app. The
++  // runtime is a shared library loaded by that process, so ask the dynamic
++  // linker where it came from: the app's nativeLibraryDir, where the GPU
++  // plugin is staged as well.
++  Dl_info info;
++  if (dladdr(reinterpret_cast<void*>(&GetExecutablePath), &info) && info.dli_fname) {
++    return std::filesystem::path(info.dli_fname);
++  }
++  return {};
+ #else
+   char buff[FILENAME_MAX] = "";
+   readlink("/proc/self/exe", buff, FILENAME_MAX);
+@@ -100,10 +116,27 @@ std::filesystem::path GetExecutablePath() {
+ }
+ 
+ std::filesystem::path GetExecutableFolder() {
++#if REX_PLATFORM_ANDROID
++  std::filesystem::path executable_path = GetExecutablePath();
++  if (!executable_path.empty()) {
++    return executable_path.parent_path();
++  }
++  return {};
++#else
+   return GetExecutablePath().parent_path();
++#endif
+ }
+ 
+ std::filesystem::path GetUserFolder() {
++#if REX_PLATFORM_ANDROID
++  // The app's internal storage (filesDir): the only place an unprivileged
++  // Android app can always write. XDG/HOME are not set on the device.
++  const char* internal_storage = SDL_GetAndroidInternalStoragePath();
++  if (internal_storage && *internal_storage) {
++    return std::filesystem::path(internal_storage);
++  }
++  return {};
++#else
+   // get preferred data home
+   if (auto xdg = rex::platform::env::get("XDG_DATA_HOME")) {
+     return std::filesystem::path(*xdg);
+@@ -121,6 +154,7 @@ std::filesystem::path GetUserFolder() {
+   getpwuid_r(getuid(), &pw1, buf, sizeof(buf), &pw);
+   assert(&pw1 == pw);  // sanity check
+   return std::filesystem::path(pw->pw_dir) / ".local" / "share";
++#endif  // REX_PLATFORM_ANDROID
+ }
+ 
+ FILE* OpenFile(const std::filesystem::path& path, const std::string_view mode) {

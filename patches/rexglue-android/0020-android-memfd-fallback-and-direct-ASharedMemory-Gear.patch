@@ -1,0 +1,140 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:46:59 +1000
+Subject: [PATCH 20/35] android: memfd fallback and direct ASharedMemory (Gears
+ 0007)
+
+Port of santiquiroz/gears-of-war-2-pc-port sdk/patches/0007 (BSD-3-Clause),
+memory_posix.cpp part. Supersedes the earlier ASharedMemory-only change, which
+is kept as history: this version is more complete.
+
+Link ASharedMemory_create directly instead of resolving it with dlopen, drop
+the no-op dynamic setup, and add a memfd_create() syscall fallback (bionic only
+declares it for API 30+, so go through syscall() to keep building against API
+29). Also treat Android like macOS for off_t: bionic has 64-bit off_t and no
+*64 variants.
+---
+ src/core/memory_posix.cpp | 83 +++++++++++++++++++++++----------------
+ 1 file changed, 49 insertions(+), 34 deletions(-)
+
+diff --git a/src/core/memory_posix.cpp b/src/core/memory_posix.cpp
+index c42a399..c1e78d4 100644
+--- a/src/core/memory_posix.cpp
++++ b/src/core/memory_posix.cpp
+@@ -36,8 +36,9 @@
+ #include <rex/string.h>
+ 
+ // macOS off_t is 64-bit with no *64 large-file variants; Linux keeps the
+-// explicit *64 forms for legacy 32-bit off_t distributions.
+-#if defined(__APPLE__)
++// explicit *64 forms for legacy 32-bit off_t distributions. Bionic (Android)
++// also uses 64-bit off_t and provides no *64 variants.
++#if defined(__APPLE__) || defined(__ANDROID__)
+ #define rex_mmap64 mmap
+ #define rex_ftruncate64 ftruncate
+ #else
+@@ -46,9 +47,9 @@
+ #endif
+ 
+ #if REX_PLATFORM_ANDROID
+-#include <string.h>
++#include <sys/syscall.h>
+ 
+-#include <dlfcn.h>
++#include <android/sharedmem.h>
+ 
+ #include <rex/main_android.h>
+ #endif
+@@ -81,30 +82,35 @@ static std::string MakeShmName(const std::filesystem::path& path) {
+ }
+ 
+ #if REX_PLATFORM_ANDROID
+-// May be null if no dynamically loaded functions are required.
+-static void* libandroid_;
+-// API 26+.
+-static int (*android_ASharedMemory_create_)(const char* name, size_t size);
++// Retained for the declared rex::memory::AndroidInitialize()/AndroidShutdown()
++// API; no dynamic setup is needed. ASharedMemory_create() is linked directly
++// from libandroid (always present: the port targets API 29+, and the API has
++// existed since level 26).
++void AndroidInitialize() {}
+ 
+-void AndroidInitialize() {
+-  if (rex::GetAndroidApiLevel() >= 26) {
+-    libandroid_ = dlopen("libandroid.so", RTLD_NOW);
+-    assert_not_null(libandroid_);
+-    if (libandroid_) {
+-      android_ASharedMemory_create_ = reinterpret_cast<decltype(android_ASharedMemory_create_)>(
+-          dlsym(libandroid_, "ASharedMemory_create"));
+-      assert_not_null(android_ASharedMemory_create_);
+-    }
+-  }
+-}
++void AndroidShutdown() {}
+ 
+-void AndroidShutdown() {
+-  android_ASharedMemory_create_ = nullptr;
+-  if (libandroid_) {
+-    dlclose(libandroid_);
+-    libandroid_ = nullptr;
+-  }
++// memfd_create() fallback for ASharedMemory_create() failures. Bionic only
++// declares memfd_create() in <sys/mman.h> for API 30+, so go through the
++// syscall directly to keep building against API 29.
++namespace {
++
++#ifndef MFD_CLOEXEC
++#define REX_MFD_CLOEXEC 0x0001U
++#else
++#define REX_MFD_CLOEXEC MFD_CLOEXEC
++#endif
++
++int CreateMemfd(const char* name) {
++#if defined(SYS_memfd_create)
++  return static_cast<int>(syscall(SYS_memfd_create, name, REX_MFD_CLOEXEC));
++#else
++  (void)name;
++  return -1;
++#endif
+ }
++
++}  // namespace
+ #endif
+ 
+ size_t page_size() {
+@@ -428,17 +434,26 @@ bool QueryProtect(void* base_address, size_t& length, PageAccess& access_out) {
+ FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path, size_t length,
+                                           PageAccess access, bool commit) {
+ #if REX_PLATFORM_ANDROID
+-  // TODO(Triang3l): Check if memfd can be used instead on API 30+.
+-  if (android_ASharedMemory_create_) {
+-    int sharedmem_fd = android_ASharedMemory_create_(path.c_str(), length);
+-    return sharedmem_fd >= 0 ? static_cast<FileMappingHandle>(sharedmem_fd)
+-                             : kFileMappingHandleInvalid;
++  // Shared guest memory must not use /dev/ashmem: apps targeting API 29+ are
++  // not allowed to open it. ASharedMemory (API 26+) is the primary path; both
++  // it and the memfd_create() fallback produce regions that can be mapped
++  // with execute permission, which guest code requires.
++  if (rex::GetAndroidApiLevel() >= 26) {
++    const int sharedmem_fd = ASharedMemory_create(path.c_str(), length);
++    if (sharedmem_fd >= 0) {
++      return static_cast<FileMappingHandle>(sharedmem_fd);
++    }
+   }
+ 
+-  // ASharedMemory_create is API 26+; this port targets API 29, so the
+-  // /dev/ashmem ioctl fallback (disabled for apps targeting API 29+, and
+-  // <linux/ashmem.h> is not part of every NDK sysroot) is not needed.
+-  return kFileMappingHandleInvalid;
++  const int memfd = CreateMemfd(path.c_str());
++  if (memfd < 0) {
++    return kFileMappingHandleInvalid;
++  }
++  if (ftruncate(memfd, static_cast<off_t>(length)) != 0) {
++    close(memfd);
++    return kFileMappingHandleInvalid;
++  }
++  return static_cast<FileMappingHandle>(memfd);
+ #else
+   int oflag;
+   switch (access) {

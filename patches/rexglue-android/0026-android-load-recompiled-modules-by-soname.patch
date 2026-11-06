@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 21:23:00 +1000
+Subject: [PATCH 26/35] android: load recompiled modules by soname
+
+---
+ src/system/kernel_state.cpp | 30 ++++++++++++++++++++++++++++--
+ 1 file changed, 28 insertions(+), 2 deletions(-)
+
+diff --git a/src/system/kernel_state.cpp b/src/system/kernel_state.cpp
+index 7b84771..2ca8eca 100644
+--- a/src/system/kernel_state.cpp
++++ b/src/system/kernel_state.cpp
+@@ -10,6 +10,7 @@
+  */
+ 
+ #include <chrono>
++#include <array>
+ #include <cstring>
+ #include <filesystem>
+ #include <string>
+@@ -782,8 +783,31 @@ object_ref<UserModule> KernelState::LoadUserModule(const std::string_view raw_na
+     }
+ 
+     rex::platform::DynamicLibrary library_local;
+-    if (!library_local.Load(std::filesystem::path(recomp->shared_lib_name),
+-                            rex::platform::SymbolResolution::kImmediate)) {
++    std::filesystem::path loaded_path(recomp->shared_lib_name);
++#if REX_PLATFORM_ANDROID
++    // Recompiled module names come from Windows codegen and omit both the
++    // Android lib prefix and shared-library suffix. Try Android sonames so
++    // bionic searches the app's nativeLibraryDir for packaged modules.
++    const std::array<std::string, 3> candidates = {
++        "lib" + recomp->shared_lib_name + ".so", recomp->shared_lib_name + ".so",
++        recomp->shared_lib_name};
++    bool loaded = false;
++    for (const auto& candidate : candidates) {
++      rex::platform::DynamicLibrary attempt;
++      if (attempt.Load(std::filesystem::path(candidate),
++                       rex::platform::SymbolResolution::kImmediate)) {
++        library_local = std::move(attempt);
++        loaded_path = candidate;
++        loaded = true;
++        REXSYS_INFO("Loaded recompiled module '{}' from Android soname '{}'", recomp->pe_name,
++                    candidate);
++        break;
++      }
++    }
++#else
++    bool loaded = library_local.Load(loaded_path, rex::platform::SymbolResolution::kImmediate);
++#endif
++    if (!loaded) {
+       REXSYS_ERROR("Failed to load shared library for module '{}'", recomp->pe_name);
+     } else {
+       auto register_func = reinterpret_cast<runtime::FunctionDispatcher::RegisterFn>(
+@@ -791,6 +815,8 @@ object_ref<UserModule> KernelState::LoadUserModule(const std::string_view raw_na
+       using GetImageInfoFn = const rex::PPCImageInfo* (*)();
+       auto get_image_info =
+           reinterpret_cast<GetImageInfoFn>(library_local.GetRawSymbol("ReXModule_GetImageInfo"));
++      REXSYS_INFO("Recompiled module '{}' loaded from '{}'", recomp->pe_name,
++                  loaded_path.string());
+       if (!register_func) {
+         REXSYS_ERROR("ReXModule_Register not found in '{}'", recomp->shared_lib_name);
+       } else if (!get_image_info) {

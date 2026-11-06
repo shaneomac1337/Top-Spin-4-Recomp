@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:21:34 +1000
+Subject: [PATCH 08/35] cmake(core): do not link librt on Android
+
+src/core linked pthread rt dl for every non-Apple UNIX target. Android's bionic
+has no separate librt (the symbols live in libc), so the link would fail.
+---
+ src/core/CMakeLists.txt | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/core/CMakeLists.txt b/src/core/CMakeLists.txt
+index 1ddafd0..1443d54 100644
+--- a/src/core/CMakeLists.txt
++++ b/src/core/CMakeLists.txt
+@@ -100,6 +100,9 @@ target_include_directories(rexcore PRIVATE
+ 
+ if(APPLE)
+     target_link_libraries(rexcore PRIVATE pthread)
++elseif(ANDROID)
++    # bionic has pthread, rt and dl in libc; there is no librt to link.
++    target_link_libraries(rexcore PRIVATE pthread dl)
+ elseif(UNIX)
+     target_link_libraries(rexcore PRIVATE pthread rt dl)
+ endif()

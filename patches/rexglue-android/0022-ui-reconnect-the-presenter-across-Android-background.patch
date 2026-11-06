@@ -1,0 +1,151 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:50:35 +1000
+Subject: [PATCH 22/35] ui: reconnect the presenter across Android
+ background/foreground (nfsmw sdk)
+
+From codepdbh/nfsmw-android sdk/ (BSD-3-Clause), src/ui/window_sdl.cpp,
+include/rex/ui/window_sdl.h and windowed_app_context_sdl.cpp.
+
+Android destroys the activity's ANativeWindow when the app goes to the
+background and hands out a new one when it returns. The presenter was left
+presenting to a dead swapchain and stopped painting for good, so the app came
+back to a black screen. Detach the surface on WILL_ENTER_BACKGROUND and
+re-create it when a foreground or window event reports a different
+ANativeWindow.
+---
+ include/rex/ui/window_sdl.h         |  9 +++++
+ src/ui/window_sdl.cpp               | 55 +++++++++++++++++++++++++++++
+ src/ui/windowed_app_context_sdl.cpp | 18 ++++++++++
+ 3 files changed, 82 insertions(+)
+
+diff --git a/include/rex/ui/window_sdl.h b/include/rex/ui/window_sdl.h
+index 71e7473..93b76c5 100644
+--- a/include/rex/ui/window_sdl.h
++++ b/include/rex/ui/window_sdl.h
+@@ -42,6 +42,10 @@ class WindowSDL final : public Window {
+   void HandleMouseEvent(SDL_Event& event);
+   void HandleDropEvent(SDL_Event& event);
+   void HandlePaintEvent();
++  // Android: the activity went to the background (the native surface is about
++  // to be destroyed) or came back. Called by SDLWindowedAppContext on the UI
++  // thread.
++  void HandleAndroidLifecycle(bool foreground);
+ 
+  protected:
+   uint32_t GetLatestDpiImpl() const override;
+@@ -84,6 +88,11 @@ class WindowSDL final : public Window {
+   std::atomic<bool> paint_pending_{false};
+   // Auto-hide cursor bookkeeping (CursorVisibility::kAutoHidden).
+   SDL_TimerID cursor_hide_timer_ = 0;
++  // Android: the ANativeWindow the presenter's surface was created for. The
++  // activity destroys it in the background and gives a new one when it comes
++  // back; see RefreshAndroidSurface.
++  void* android_window_ = nullptr;
++  void RefreshAndroidSurface();
+ };
+ 
+ }  // namespace rex::ui
+diff --git a/src/ui/window_sdl.cpp b/src/ui/window_sdl.cpp
+index 6fd3b7c..e375b7c 100644
+--- a/src/ui/window_sdl.cpp
++++ b/src/ui/window_sdl.cpp
+@@ -414,6 +414,7 @@ std::unique_ptr<Surface> WindowSDL::CreateSurfaceImpl(Surface::TypeFlags allowed
+     auto* native_window = static_cast<ANativeWindow*>(
+         SDL_GetPointerProperty(props, SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, nullptr));
+     if (native_window) {
++      android_window_ = native_window;
+       return std::make_unique<AndroidNativeWindowSurface>(native_window);
+     }
+   }
+@@ -458,7 +459,61 @@ void WindowSDL::HandlePaintEvent() {
+   OnPaint();
+ }
+ 
++void WindowSDL::HandleAndroidLifecycle(bool foreground) {
++#if REX_PLATFORM_ANDROID
++  if (foreground) {
++    RefreshAndroidSurface();
++    return;
++  }
++  // Detach the presenter before Android destroys the surface. Otherwise it
++  // keeps presenting to a dead swapchain, fails to rebuild it on the destroyed
++  // window and gives up painting for good: a black screen after coming back
++  // from another app.
++  if (HasSurface()) {
++    OnSurfaceChanged(false);
++  }
++  android_window_ = nullptr;
++#else
++  (void)foreground;
++#endif
++}
++
++void WindowSDL::RefreshAndroidSurface() {
++#if REX_PLATFORM_ANDROID
++  if (!presenter() || !sdl_window_) {
++    return;
++  }
++  void* current = SDL_GetPointerProperty(SDL_GetWindowProperties(sdl_window_),
++                                         SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, nullptr);
++  // The new surface may arrive after the foreground event: every later window
++  // event checks again.
++  if (!current || (HasSurface() && current == android_window_)) {
++    return;
++  }
++  REXLOG_INFO("WindowSDL: Android surface {}; reconnecting the presenter",
++              HasSurface() ? "changed" : "after returning to the foreground");
++  OnSurfaceChanged(true);
++  if (HasSurface()) {
++    OnPaint(true);
++  }
++#endif
++}
++
+ void WindowSDL::HandleWindowEvent(SDL_Event& event) {
++#if REX_PLATFORM_ANDROID
++  switch (event.type) {
++    case SDL_EVENT_WINDOW_SHOWN:
++    case SDL_EVENT_WINDOW_EXPOSED:
++    case SDL_EVENT_WINDOW_RESTORED:
++    case SDL_EVENT_WINDOW_RESIZED:
++    case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
++    case SDL_EVENT_WINDOW_FOCUS_GAINED:
++      RefreshAndroidSurface();
++      break;
++    default:
++      break;
++  }
++#endif
+   WindowDestructionReceiver destruction_receiver(this);
+   switch (event.type) {
+     case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+diff --git a/src/ui/windowed_app_context_sdl.cpp b/src/ui/windowed_app_context_sdl.cpp
+index dc0b4c2..202bd49 100644
+--- a/src/ui/windowed_app_context_sdl.cpp
++++ b/src/ui/windowed_app_context_sdl.cpp
+@@ -169,6 +169,24 @@ void SDLWindowedAppContext::ProcessEvent(SDL_Event& event) {
+       }
+       break;
+     }
++#if REX_PLATFORM_ANDROID
++    // The activity's surface is destroyed in the background and replaced when
++    // it comes back.
++    case SDL_EVENT_WILL_ENTER_BACKGROUND:
++    case SDL_EVENT_DID_ENTER_BACKGROUND:
++    case SDL_EVENT_WILL_ENTER_FOREGROUND:
++    case SDL_EVENT_DID_ENTER_FOREGROUND: {
++      const bool foreground = event.type == SDL_EVENT_WILL_ENTER_FOREGROUND ||
++                              event.type == SDL_EVENT_DID_ENTER_FOREGROUND;
++      for (const auto& [id, window] : windows_) {
++        (void)window;
++        if (WindowSDL* w = GetWindow(id)) {
++          w->HandleAndroidLifecycle(foreground);
++        }
++      }
++      break;
++    }
++#endif
+     case SDL_EVENT_DROP_FILE: {
+       if (WindowSDL* window = GetWindow(event.drop.windowID)) {
+         window->HandleDropEvent(event);

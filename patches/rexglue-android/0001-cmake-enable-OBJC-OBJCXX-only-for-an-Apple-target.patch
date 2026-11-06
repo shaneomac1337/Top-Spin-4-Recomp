@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:18:16 +1000
+Subject: [PATCH 01/35] cmake: enable OBJC/OBJCXX only for an Apple target
+
+APPLE is evaluated before the toolchain file is loaded (the first project()
+call), so it reflects the host. A macOS host cross-compiling to Android asked
+for Objective-C compilers, which the NDK toolchain does not set up, and
+configure failed while testing the OBJC compiler. Enable the Apple languages
+after project(), where APPLE describes the target.
+---
+ CMakeLists.txt | 16 +++++++++-------
+ 1 file changed, 9 insertions(+), 7 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 9b3cdf5..9d4ae96 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,17 +1,19 @@
+ # ReXGlue SDK - Xbox 360 Recompilation Toolkit
+ cmake_minimum_required(VERSION 3.25)
+ 
+-if(APPLE)
+-    set(REXGLUE_LANGUAGES C CXX OBJC OBJCXX)
+-else()
+-    set(REXGLUE_LANGUAGES C CXX)
+-endif()
+-
++# OBJC/OBJCXX are added after project(): before the first project() call the
++# toolchain file has not been loaded yet, so APPLE describes the *host* and a
++# macOS host cross-compiling to Android would ask for Objective-C compilers the
++# NDK does not provide for that language.
+ project(ReXGlue
+     VERSION 0.10.0
+-    LANGUAGES ${REXGLUE_LANGUAGES}
++    LANGUAGES C CXX
+     DESCRIPTION "Xbox 360 Recompilation SDK"
+ )
++if(APPLE)
++    enable_language(OBJC)
++    enable_language(OBJCXX)
++endif()
+ # Floor only: bump MAJOR.MINOR for API changes. Patch is derived from git tags
+ # in cmake/rex_version.cmake. See docs/RELEASING.md.
+ 

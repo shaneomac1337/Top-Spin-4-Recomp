@@ -1,0 +1,92 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:46:24 +1000
+Subject: [PATCH 19/35] android: chain unclaimed faults and handle SIGBUS
+ (Gears 0007)
+
+Port of santiquiroz/gears-of-war-2-pc-port sdk/patches/0007 (BSD-3-Clause),
+exception_handler_posix.cpp part.
+
+On Android, an ARM64 protection fault can arrive as SIGBUS, and returning from
+the handler without a guest handler having claimed the fault resumes the
+faulting instruction forever. Handle SIGBUS like SIGSEGV on Android and
+forward an unclaimed SIGSEGV/SIGBUS/SIGILL to the previously installed
+handler (or restore SIG_DFL and re-raise) instead of spinning.
+---
+ src/core/exception_handler_posix.cpp | 41 ++++++++++++++++++++++++----
+ 1 file changed, 36 insertions(+), 5 deletions(-)
+
+diff --git a/src/core/exception_handler_posix.cpp b/src/core/exception_handler_posix.cpp
+index 8b1c76a..0bc7730 100644
+--- a/src/core/exception_handler_posix.cpp
++++ b/src/core/exception_handler_posix.cpp
+@@ -36,7 +36,7 @@ namespace rex::arch {
+ bool signal_handlers_installed_ = false;
+ struct sigaction original_sigill_handler_;
+ struct sigaction original_sigsegv_handler_;
+-#if REX_PLATFORM_MAC
++#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID
+ struct sigaction original_sigbus_handler_;
+ #endif
+ 
+@@ -170,10 +170,11 @@ static void ExceptionHandlerCallback(int signal_number, siginfo_t* signal_info,
+     case SIGBUS:
+       // On macOS, SIGBUS (KERN_PROTECTION_FAILURE) is raised for writes to
+       // read-protected pages — the same scenario that raises SIGSEGV on Linux.
++      // On Android (ARM64) protection faults may also arrive as SIGBUS.
+       // Fall through to treat it as an access violation.
+-#if !REX_PLATFORM_MAC
+-      // On non-Mac POSIX, SIGBUS is a bus error (misaligned access), not a
+-      // protection fault — don't handle it here.
++#if !REX_PLATFORM_MAC && !REX_PLATFORM_ANDROID
++      // On non-Mac, non-Android POSIX, SIGBUS is a bus error (misaligned
++      // access), not a protection fault — don't handle it here.
+       assert_unhandled_case(signal_number);
+       return;
+ #endif
+@@ -417,6 +418,36 @@ static void ExceptionHandlerCallback(int signal_number, siginfo_t* signal_info,
+       return;
+     }
+   }
++
++#if REX_PLATFORM_ANDROID
++  // No guest handler claimed the fault. Returning would resume the faulting
++  // instruction and fault again forever, so forward to the previously
++  // installed action instead.
++  const struct sigaction* previous = nullptr;
++  if (signal_number == SIGSEGV) {
++    previous = &original_sigsegv_handler_;
++  } else if (signal_number == SIGBUS) {
++    previous = &original_sigbus_handler_;
++  } else if (signal_number == SIGILL) {
++    previous = &original_sigill_handler_;
++  }
++  if (previous) {
++    if ((previous->sa_flags & SA_SIGINFO) != 0 && previous->sa_sigaction != nullptr) {
++      previous->sa_sigaction(signal_number, signal_info, signal_context);
++      return;
++    }
++    if (previous->sa_handler != SIG_DFL && previous->sa_handler != SIG_IGN &&
++        previous->sa_handler != nullptr) {
++      previous->sa_handler(signal_number);
++      return;
++    }
++  }
++  // No previous handler (or it was default/ignore): restore the default
++  // disposition and re-raise so the process dies with the original signal
++  // instead of spinning on the fault.
++  signal(signal_number, SIG_DFL);
++  raise(signal_number);
++#endif
+ }
+ 
+ void ExceptionHandler::Install(Handler fn, void* data) {
+@@ -433,7 +464,7 @@ void ExceptionHandler::Install(Handler fn, void* data) {
+     if (sigaction(SIGSEGV, &signal_handler, &original_sigsegv_handler_) != 0) {
+       assert_always("Failed to install new SIGSEGV handler");
+     }
+-#if REX_PLATFORM_MAC
++#if REX_PLATFORM_MAC || REX_PLATFORM_ANDROID
+     if (sigaction(SIGBUS, &signal_handler, &original_sigbus_handler_) != 0) {
+       assert_always("Failed to install new SIGBUS handler");
+     }

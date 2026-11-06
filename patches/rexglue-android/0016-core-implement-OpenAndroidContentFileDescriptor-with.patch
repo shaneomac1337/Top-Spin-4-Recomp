@@ -1,0 +1,180 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:34:06 +1000
+Subject: [PATCH 16/35] core: implement OpenAndroidContentFileDescriptor with
+ JNI
+
+include/rex/filesystem.h declared OpenAndroidContentFileDescriptor (and
+IsAndroidContentUri) for Android, and MappedMemory::OpenForAndroidContentUri
+called it, but nothing defined it, so librexruntime failed to link. Implement
+both over the SDL activity's ContentResolver: content:// URIs are turned into a
+detached ParcelFileDescriptor fd, which the existing mmap path then uses. The
+JNI environment and activity come from SDL3, which already owns JNI_OnLoad.
+---
+ src/core/CMakeLists.txt         |   8 +-
+ src/core/filesystem_android.cpp | 130 ++++++++++++++++++++++++++++++++
+ 2 files changed, 135 insertions(+), 3 deletions(-)
+ create mode 100644 src/core/filesystem_android.cpp
+
+diff --git a/src/core/CMakeLists.txt b/src/core/CMakeLists.txt
+index 7079316..d4938f7 100644
+--- a/src/core/CMakeLists.txt
++++ b/src/core/CMakeLists.txt
+@@ -76,7 +76,7 @@ elseif(UNIX)
+     )
+     if(ANDROID)
+         # Bionic has no ucontext on 64-bit; the switch is aarch64 assembly.
+-        target_sources(rexcore PRIVATE fiber_android.cpp main_android.cpp)
++        target_sources(rexcore PRIVATE fiber_android.cpp filesystem_android.cpp main_android.cpp)
+     endif()
+ endif()
+ 
+@@ -107,8 +107,10 @@ if(APPLE)
+ elseif(ANDROID)
+     # bionic has pthread, rt and dl in libc, and the NDK ships no libpthread or
+     # librt stub to link against. libandroid provides
+-    # android_get_device_api_level.
+-    target_link_libraries(rexcore PRIVATE dl android)
++    # android_get_device_api_level. SDL3 supplies the JNI environment, the
++    # activity and the app's internal storage path for the Android filesystem
++    # layer.
++    target_link_libraries(rexcore PRIVATE dl android SDL3::SDL3)
+ elseif(UNIX)
+     target_link_libraries(rexcore PRIVATE pthread rt dl)
+ endif()
+diff --git a/src/core/filesystem_android.cpp b/src/core/filesystem_android.cpp
+new file mode 100644
+index 0000000..7422629
+--- /dev/null
++++ b/src/core/filesystem_android.cpp
+@@ -0,0 +1,130 @@
++/**
++ ******************************************************************************
++ * Xenia : Xbox 360 Emulator Research Project                                 *
++ ******************************************************************************
++ * Copyright 2020 Ben Vanik. All rights reserved.                             *
++ * Released under the BSD license - see LICENSE in the root for more details. *
++ *
++ * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
++ */
++
++#include <rex/platform.h>
++
++#if REX_PLATFORM_ANDROID
++
++#include <jni.h>
++
++#include <SDL3/SDL_system.h>
++
++#include <string>
++#include <string_view>
++
++#include <rex/filesystem.h>
++#include <rex/logging.h>
++
++// The Java side of the runtime is the SDL activity: SDL3 owns JNI_OnLoad and
++// hands out the JNIEnv and the activity object, so no JVM pointer has to be
++// threaded through the app.
++
++namespace rex::filesystem {
++namespace {
++
++JNIEnv* GetJNIEnv() {
++  return static_cast<JNIEnv*>(SDL_GetAndroidJNIEnv());
++}
++
++jobject GetActivity() {
++  return static_cast<jobject>(SDL_GetAndroidActivity());
++}
++
++}  // namespace
++
++void AndroidInitialize() {}
++void AndroidShutdown() {}
++
++bool IsAndroidContentUri(const std::string_view source) {
++  return source.rfind("content://", 0) == 0;
++}
++
++int OpenAndroidContentFileDescriptor(const std::string_view uri, const char* mode) {
++  JNIEnv* env = GetJNIEnv();
++  jobject activity = GetActivity();
++  if (!env || !activity) {
++    REXLOG_ERROR("OpenAndroidContentFileDescriptor: no JNI environment");
++    return -1;
++  }
++
++  int fd = -1;
++  std::string uri_string(uri);
++  jstring juri = env->NewStringUTF(uri_string.c_str());
++  jstring jmode = env->NewStringUTF(mode);
++  jclass uri_class = env->FindClass("android/net/Uri");
++  jclass activity_class = env->GetObjectClass(activity);
++  if (juri && jmode && uri_class && activity_class) {
++    jmethodID uri_parse = env->GetStaticMethodID(
++        uri_class, "parse", "(Ljava/lang/String;)Landroid/net/Uri;");
++    jmethodID get_content_resolver = env->GetMethodID(
++        activity_class, "getContentResolver", "()Landroid/content/ContentResolver;");
++    if (uri_parse && get_content_resolver) {
++      jobject uri_object = env->CallStaticObjectMethod(uri_class, uri_parse, juri);
++      jobject resolver = env->CallObjectMethod(activity, get_content_resolver);
++      if (uri_object && resolver) {
++        jclass resolver_class = env->GetObjectClass(resolver);
++        if (resolver_class) {
++          jmethodID open_file_descriptor = env->GetMethodID(
++              resolver_class, "openFileDescriptor",
++              "(Landroid/net/Uri;Ljava/lang/String;)Landroid/os/ParcelFileDescriptor;");
++          if (open_file_descriptor) {
++            jobject parcel_fd =
++                env->CallObjectMethod(resolver, open_file_descriptor, uri_object, jmode);
++            if (parcel_fd) {
++              jclass parcel_fd_class = env->FindClass("android/os/ParcelFileDescriptor");
++              if (parcel_fd_class) {
++                jmethodID detach_fd =
++                    env->GetMethodID(parcel_fd_class, "detachFd", "()I");
++                if (detach_fd) {
++                  // detachFd hands the descriptor over to the caller; closing
++                  // the ParcelFileDescriptor no longer closes it.
++                  fd = env->CallIntMethod(parcel_fd, detach_fd);
++                }
++                env->DeleteLocalRef(parcel_fd_class);
++              }
++              env->DeleteLocalRef(parcel_fd);
++            }
++          }
++          env->DeleteLocalRef(resolver_class);
++        }
++        env->DeleteLocalRef(resolver);
++      }
++      if (uri_object) {
++        env->DeleteLocalRef(uri_object);
++      }
++    }
++  }
++  if (activity_class) {
++    env->DeleteLocalRef(activity_class);
++  }
++  if (uri_class) {
++    env->DeleteLocalRef(uri_class);
++  }
++  if (jmode) {
++    env->DeleteLocalRef(jmode);
++  }
++  if (juri) {
++    env->DeleteLocalRef(juri);
++  }
++
++  if (env->ExceptionCheck()) {
++    env->ExceptionDescribe();
++    env->ExceptionClear();
++    return -1;
++  }
++  if (fd < 0) {
++    REXLOG_ERROR("OpenAndroidContentFileDescriptor: could not open {}", uri_string);
++  }
++  return fd;
++}
++
++}  // namespace rex::filesystem
++
++#endif  // REX_PLATFORM_ANDROID

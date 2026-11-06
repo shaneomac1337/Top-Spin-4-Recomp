@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:21:10 +1000
+Subject: [PATCH 06/35] ui: create the Android surface from the SDL window
+
+WindowSDL::CreateSurfaceImpl only had Win32, macOS and GNU/Linux branches, and
+the include block pulled in <X11/Xlib-xcb.h> for every non-Win32/non-macOS
+target, so window_sdl.cpp could not compile for Android. Read SDL's
+SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER and return an
+AndroidNativeWindowSurface.
+---
+ src/ui/window_sdl.cpp | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/src/ui/window_sdl.cpp b/src/ui/window_sdl.cpp
+index 1744374..6fd3b7c 100644
+--- a/src/ui/window_sdl.cpp
++++ b/src/ui/window_sdl.cpp
+@@ -35,6 +35,8 @@
+ #include <SDL3/SDL_metal.h>
+ 
+ #include <rex/ui/surface_mac.h>
++#elif REX_PLATFORM_ANDROID
++#include <rex/ui/surface_android.h>
+ #else
+ #include <X11/Xlib-xcb.h>
+ #include <rex/ui/surface_gnulinux.h>
+@@ -404,6 +406,17 @@ std::unique_ptr<Surface> WindowSDL::CreateSurfaceImpl(Surface::TypeFlags allowed
+       SDL_Metal_DestroyView(metal_view);
+     }
+   }
++#elif REX_PLATFORM_ANDROID
++  // SDL's android video driver exposes the Activity's ANativeWindow; the
++  // surface is presented with VK_KHR_android_surface.
++  SDL_PropertiesID props = SDL_GetWindowProperties(sdl_window_);
++  if (allowed_types & Surface::kTypeFlag_AndroidNativeWindow) {
++    auto* native_window = static_cast<ANativeWindow*>(
++        SDL_GetPointerProperty(props, SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, nullptr));
++    if (native_window) {
++      return std::make_unique<AndroidNativeWindowSurface>(native_window);
++    }
++  }
+ #else
+   SDL_PropertiesID props = SDL_GetWindowProperties(sdl_window_);
+   if (allowed_types & Surface::kTypeFlag_WaylandSurface) {

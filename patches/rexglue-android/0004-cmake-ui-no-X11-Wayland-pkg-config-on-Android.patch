@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:20:19 +1000
+Subject: [PATCH 04/35] cmake(ui): no X11/Wayland pkg-config on Android
+
+src/ui required x11-xcb and wayland-client from pkg-config for every
+UNIX-and-not-APPLE target. The NDK has no pkg-config and Android has neither
+protocol; the Vulkan surface there comes from VK_KHR_android_surface on an
+ANativeWindow. Link libandroid instead.
+---
+ src/ui/CMakeLists.txt | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/src/ui/CMakeLists.txt b/src/ui/CMakeLists.txt
+index 5bd3dc5..6af7a70 100644
+--- a/src/ui/CMakeLists.txt
++++ b/src/ui/CMakeLists.txt
+@@ -146,7 +146,12 @@ if(REXGLUE_USE_VULKAN)
+ endif()
+ 
+ # Platform-specific dependencies
+-if(UNIX AND NOT APPLE)
++if(ANDROID)
++    # No pkg-config, X11 or Wayland in the NDK; the Android surface is a
++    # VK_KHR_android_surface on an ANativeWindow, and SDL's android video
++    # driver provides the window.
++    target_link_libraries(rexui PUBLIC android)
++elseif(UNIX AND NOT APPLE)
+     find_package(PkgConfig REQUIRED)
+     pkg_check_modules(X11_XCB REQUIRED x11-xcb)
+     # Required, not optional: vulkan/api.h pulls in <wayland-client.h> on every

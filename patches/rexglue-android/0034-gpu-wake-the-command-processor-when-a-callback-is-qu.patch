@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <191880570+hjcoggan@users.noreply.github.com>
+Date: Fri, 6 Nov 2026 00:11:19 +1000
+Subject: [PATCH 34/35] gpu: wake the command processor when a callback is
+ queued
+
+CallInThread queued a callback without signalling the worker, so the wait had to
+use a short timeout or a callback would sit; the worker then woke several times a
+frame for nothing (__schedule was its busiest symbol). Signal the event on queue
+and use a single 5 ms timeout as a safety net. Measured 158% -> 154% process CPU
+on the Nova at 60 fps.
+---
+ src/graphics/command_processor.cpp | 18 ++++++++++--------
+ 1 file changed, 10 insertions(+), 8 deletions(-)
+
+diff --git a/src/graphics/command_processor.cpp b/src/graphics/command_processor.cpp
+index 153835c..72066fa 100644
+--- a/src/graphics/command_processor.cpp
++++ b/src/graphics/command_processor.cpp
+@@ -203,6 +203,10 @@ void CommandProcessor::CallInThread(std::function<void()> fn) {
+     fn();
+   } else {
+     pending_fns_.push(std::move(fn));
++    // Wake the worker if it is blocked. Without this the wait had to use a short timeout so a
++    // queued callback would not sit, which woke the worker several times per frame for nothing
++    // (__schedule was the busiest symbol on that thread).
++    write_ptr_index_event_->Set();
+   }
+ }
+ 
+@@ -283,15 +287,13 @@ void CommandProcessor::WorkerThreadMain() {
+       PrepareForWait();
+       uint32_t loop_count = 0;
+       do {
+-        // The guest signals write_ptr_index_event_ from UpdateWritePointer, so a wait here
+-        // returns immediately when there is work; the timeout only bounds how long a
+-        // CallInThread callback can sit (it does not signal the event). Spinning first is
+-        // therefore only worth a few iterations -- 500 of them, repeated after every wake,
+-        // burned 11-19% of a core while the GPU was idle (PLAN.md, 2026-11-05).
++        // The guest signals write_ptr_index_event_ from UpdateWritePointer and CallInThread
++        // signals it too, so a wait returns immediately when there is work. Spinning first is
++        // therefore only worth a few iterations -- 500 of them, repeated after every wake, burned
++        // 11-19% of a core while the GPU was idle (PLAN.md, 2026-11-05) -- and the timeout is only
++        // a safety net against a missed wakeup, so it does not need to be short.
+         if (loop_count >= kSpinIterations) {
+-          const int wait_time_ms = loop_count < kSpinIterations + 4 ? 1 : 5;
+-          rex::thread::Wait(write_ptr_index_event_.get(), true,
+-                            std::chrono::milliseconds(wait_time_ms));
++          rex::thread::Wait(write_ptr_index_event_.get(), true, std::chrono::milliseconds(5));
+         }
+ 
+         rex::thread::MaybeYield();

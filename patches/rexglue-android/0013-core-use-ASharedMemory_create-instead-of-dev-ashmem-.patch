@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:27:14 +1000
+Subject: [PATCH 13/35] core: use ASharedMemory_create instead of /dev/ashmem
+ on Android
+
+The Android guest-memory path included <linux/ashmem.h> and fell back to
+/dev/ashmem ioctls when ASharedMemory_create was unavailable. This port targets
+API 29, where the ashmem device is closed to apps targeting it, so keep only
+the ASharedMemory_create path (API 26+) and drop the legacy header and ioctls.
+---
+ src/core/memory_posix.cpp | 22 ++++------------------
+ 1 file changed, 4 insertions(+), 18 deletions(-)
+
+diff --git a/src/core/memory_posix.cpp b/src/core/memory_posix.cpp
+index 2cdcd55..c42a399 100644
+--- a/src/core/memory_posix.cpp
++++ b/src/core/memory_posix.cpp
+@@ -49,9 +49,6 @@
+ #include <string.h>
+ 
+ #include <dlfcn.h>
+-#include <sys/ioctl.h>
+-
+-#include <linux/ashmem.h>
+ 
+ #include <rex/main_android.h>
+ #endif
+@@ -438,21 +435,10 @@ FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path, siz
+                              : kFileMappingHandleInvalid;
+   }
+ 
+-  // Use /dev/ashmem on API versions below 26, which added ASharedMemory.
+-  // /dev/ashmem was disabled on API 29 for apps targeting it.
+-  // https://chromium.googlesource.com/chromium/src/+/master/third_party/ashmem/ashmem-dev.c
+-  int ashmem_fd = open("/" ASHMEM_NAME_DEF, O_RDWR);
+-  if (ashmem_fd < 0) {
+-    return kFileMappingHandleInvalid;
+-  }
+-  char ashmem_name[ASHMEM_NAME_LEN];
+-  strlcpy(ashmem_name, path.c_str(), rex::countof(ashmem_name));
+-  if (ioctl(ashmem_fd, ASHMEM_SET_NAME, ashmem_name) < 0 ||
+-      ioctl(ashmem_fd, ASHMEM_SET_SIZE, length) < 0) {
+-    close(ashmem_fd);
+-    return kFileMappingHandleInvalid;
+-  }
+-  return static_cast<FileMappingHandle>(ashmem_fd);
++  // ASharedMemory_create is API 26+; this port targets API 29, so the
++  // /dev/ashmem ioctl fallback (disabled for apps targeting API 29+, and
++  // <linux/ashmem.h> is not part of every NDK sysroot) is not needed.
++  return kFileMappingHandleInvalid;
+ #else
+   int oflag;
+   switch (access) {

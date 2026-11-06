@@ -1,0 +1,19 @@
+diff --git a/src/events/SDL_events.c b/src/events/SDL_events.c
+index c909a2a..9c7b8eb 100644
+--- a/src/events/SDL_events.c
++++ b/src/events/SDL_events.c
+@@ -1129,6 +1129,14 @@ static void SDL_CutEvent(SDL_EventEntry *entry)
+ static void SDL_SendWakeupEvent(void)
+ {
+ #ifdef SDL_PLATFORM_ANDROID
++    // A wakeup exists to wake the thread that is waiting, so it is only needed when a *different*
++    // thread pushes an event. SDL_PumpEventsInternal pushes the poll sentinel from the waiting
++    // thread itself; signalling the lifecycle semaphore there made SDL_WaitEvent find its own
++    // wakeup on every iteration and spin instead of blocking -- measured as a whole core of
++    // userspace CPU at 14.1 ms of CPU time per call, with no syscalls (PLAN.md, 2026-11-05).
++    if (SDL_IsMainThread()) {
++        return;
++    }
+     Android_SendLifecycleEvent(SDL_ANDROID_LIFECYCLE_WAKE);
+ #else
+     SDL_VideoDevice *_this = SDL_GetVideoDevice();

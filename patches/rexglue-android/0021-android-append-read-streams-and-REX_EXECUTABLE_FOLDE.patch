@@ -1,0 +1,76 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:47:34 +1000
+Subject: [PATCH 21/35] android: append-read streams and REX_EXECUTABLE_FOLDER
+ (Gears 0007)
+
+Port of santiquiroz/gears-of-war-2-pc-port sdk/patches/0007 (BSD-3-Clause),
+filesystem_posix.cpp part, merged with this port's Android path work.
+
+Bionic starts an "a+" stream's reads at the end of the file (glibc and MSVC
+start at 0), so the shader storage readers saw no header and truncated their
+files on every launch; rewind those streams. GetExecutableFolder() now honours
+REX_EXECUTABLE_FOLDER when the activity sets it, then falls back to the
+dladdr() nativeLibraryDir path added earlier. The content-URI stubs from the
+patch are not taken: filesystem_android.cpp implements them over JNI instead.
+---
+ src/core/filesystem_posix.cpp | 29 ++++++++++++++++++++++-------
+ 1 file changed, 22 insertions(+), 7 deletions(-)
+
+diff --git a/src/core/filesystem_posix.cpp b/src/core/filesystem_posix.cpp
+index cf4c7eb..85a6bcc 100644
+--- a/src/core/filesystem_posix.cpp
++++ b/src/core/filesystem_posix.cpp
+@@ -10,6 +10,7 @@
+  */
+ 
+ #include <assert.h>
++#include <errno.h>
+ #include <stdio.h>
+ #include <string.h>
+ 
+@@ -117,14 +118,14 @@ std::filesystem::path GetExecutablePath() {
+ 
+ std::filesystem::path GetExecutableFolder() {
+ #if REX_PLATFORM_ANDROID
+-  std::filesystem::path executable_path = GetExecutablePath();
+-  if (!executable_path.empty()) {
+-    return executable_path.parent_path();
++  // An app's process image is /system/bin/app_process64; the activity may name
++  // the folder that holds its config and logs, and otherwise the runtime's own
++  // library path (dladdr in GetExecutablePath) gives the nativeLibraryDir.
++  if (auto dir = rex::platform::env::get("REX_EXECUTABLE_FOLDER")) {
++    return std::filesystem::path(*dir);
+   }
+-  return {};
+-#else
+-  return GetExecutablePath().parent_path();
+ #endif
++  return GetExecutablePath().parent_path();
+ }
+ 
+ std::filesystem::path GetUserFolder() {
+@@ -157,8 +158,22 @@ std::filesystem::path GetUserFolder() {
+ #endif  // REX_PLATFORM_ANDROID
+ }
+ 
++#if REX_PLATFORM_ANDROID
++static bool IsAppendReadMode(const std::string_view mode) {
++  return mode.find('a') != std::string_view::npos && mode.find('+') != std::string_view::npos;
++}
++#endif
++
+ FILE* OpenFile(const std::filesystem::path& path, const std::string_view mode) {
+-  return fopen(path.c_str(), std::string(mode).c_str());
++  FILE* file = fopen(path.c_str(), std::string(mode).c_str());
++#if REX_PLATFORM_ANDROID
++  // Bionic starts an "a+" stream's reads at the end of the file (glibc and MSVC at 0), so the
++  // shader storage readers saw no header and truncated their files on every launch.
++  if (file && IsAppendReadMode(mode)) {
++    rewind(file);
++  }
++#endif
++  return file;
+ }
+ 
+ bool Seek(FILE* file, int64_t offset, int origin) {

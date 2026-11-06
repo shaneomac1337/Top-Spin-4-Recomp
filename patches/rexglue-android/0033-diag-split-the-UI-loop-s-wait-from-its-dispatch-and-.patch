@@ -1,0 +1,104 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ts4-port <ts4-port@localhost>
+Date: Thu, 5 Nov 2026 18:28:25 +1000
+Subject: [PATCH 33/35] diag: split the UI loop's wait from its dispatch, and a
+ joystick-update switch
+
+Measured on the Nova: the UI thread runs ~110 events/s, zero paints, and is in
+state R at 100% of a core, while the time inside SDL_WaitEvent is 9.1 ms per
+event and ProcessEvent is 0.01 ms. So the wait itself spins. Ruled out by
+measurement: the present wait/hold (256% vs 251% with both off), the SDL pump we
+call for pad polling (0.002-0.022 ms mean), and joystick updates in the pump
+(262% with them disabled, unchanged). The spin is inside SDL's Android
+event/lifecycle wait.
+---
+ src/input/sdl/sdl_input_driver.cpp  |  7 +++++++
+ src/ui/windowed_app_context_sdl.cpp | 30 +++++++++++++++++++++--------
+ 2 files changed, 29 insertions(+), 8 deletions(-)
+
+diff --git a/src/input/sdl/sdl_input_driver.cpp b/src/input/sdl/sdl_input_driver.cpp
+index 97e36bb..3774e64 100644
+--- a/src/input/sdl/sdl_input_driver.cpp
++++ b/src/input/sdl/sdl_input_driver.cpp
+@@ -25,6 +25,9 @@
+ REXCVAR_DEFINE_STRING(hid_mappings_file, "gamecontrollerdb.txt", "Input",
+                       "Path to SDL gamecontroller mappings file");
+ 
++REXCVAR_DEFINE_BOOL(diag_no_joystick_update, false, "Input",
++                    "Diagnostic: stop SDL from updating joysticks during event pumps, to measure "
++                    "what that update costs the UI thread (the pad stops responding)");
+ REXCVAR_DEFINE_BOOL(log_input_pump, false, "Input",
+                     "Diagnostic: log the rate and duration of the SDL event pump that the guest's "
+                     "pad polling forces on the UI thread");
+@@ -68,6 +71,10 @@ void SDLInputDriver::OnWindowAvailable(rex::ui::Window* window) {
+         return;
+       }
+       sdl_events_initialized_ = true;
++      if (REXCVAR_GET(diag_no_joystick_update)) {
++        SDL_SetJoystickEventsEnabled(false);
++        REXLOG_INFO("diagnostic: joystick updates disabled for this run");
++      }
+       pending_events_.reserve(64);
+ 
+       // With an event watch we will always get notified, even if the event queue
+diff --git a/src/ui/windowed_app_context_sdl.cpp b/src/ui/windowed_app_context_sdl.cpp
+index 514fda5..2bd8673 100644
+--- a/src/ui/windowed_app_context_sdl.cpp
++++ b/src/ui/windowed_app_context_sdl.cpp
+@@ -89,17 +89,21 @@ void SDLWindowedAppContext::PlatformQuitFromUIThread() {
+ }
+ 
+ int SDLWindowedAppContext::RunMainMessageLoop() {
+-  // Diagnostic: what drives the loop, and how often. An event loop that runs thousands of times a
+-  // second is a busy loop, and on this device it burned a whole core (see PLAN.md, 2026-11-05).
++  // Diagnostic: what drives the loop, how often, and whether the time goes into waiting or into
++  // dispatching the event. Measured on this device the loop ran ~110-137 events/s, all wakeups and
++  // no paints, yet the thread was on-CPU ~99% of the time (PLAN.md, 2026-11-05).
+   const bool log_loop = REXCVAR_GET(log_event_loop);
+   uint64_t iterations = 0, paints = 0, wakeups = 0, others = 0;
++  int64_t wait_ns = 0, dispatch_ns = 0;
+   auto window_start = std::chrono::steady_clock::now();
+   while (!HasQuitFromUIThread()) {
++    const auto wait_start = std::chrono::steady_clock::now();
+     SDL_Event event;
+     if (!SDL_WaitEvent(&event)) {
+       REXLOG_ERROR("SDL_WaitEvent failed: {}", SDL_GetError());
+       return EXIT_FAILURE;
+     }
++    const auto dispatch_start = std::chrono::steady_clock::now();
+     if (log_loop) {
+       ++iterations;
+       if (event.type == paint_event_type_) {
+@@ -109,16 +113,26 @@ int SDLWindowedAppContext::RunMainMessageLoop() {
+       } else {
+         ++others;
+       }
+-      const auto now = std::chrono::steady_clock::now();
+-      const double seconds = std::chrono::duration<double>(now - window_start).count();
++      wait_ns +=
++          std::chrono::duration_cast<std::chrono::nanoseconds>(dispatch_start - wait_start).count();
++    }
++    ProcessEvent(event);
++    if (log_loop) {
++      const auto dispatch_end = std::chrono::steady_clock::now();
++      dispatch_ns +=
++          std::chrono::duration_cast<std::chrono::nanoseconds>(dispatch_end - dispatch_start)
++              .count();
++      const double seconds = std::chrono::duration<double>(dispatch_end - window_start).count();
+       if (seconds >= 2.0) {
+-        REXLOG_INFO("event loop: {:.0f} events/s ({} paint, {} wakeup, {} other)", iterations / seconds,
+-                    paints, wakeups, others);
++        REXLOG_INFO("event loop: {:.0f} events/s ({} paint, {} wakeup, {} other); wait {:.2f} ms "
++                    "mean, dispatch {:.2f} ms mean",
++                    iterations / seconds, paints, wakeups, others,
++                    wait_ns / double(iterations) / 1e6, dispatch_ns / double(iterations) / 1e6);
+         iterations = paints = wakeups = others = 0;
+-        window_start = now;
++        wait_ns = dispatch_ns = 0;
++        window_start = dispatch_end;
+       }
+     }
+-    ProcessEvent(event);
+   }
+   return EXIT_SUCCESS;
+ }

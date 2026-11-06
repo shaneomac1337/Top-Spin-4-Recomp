@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:51:04 +1000
+Subject: [PATCH 24/35] android: accept REX_APP_FOLDER as well as
+ REX_EXECUTABLE_FOLDER
+
+nfsmw's SDK port (codepdbh/nfsmw-android sdk/, BSD-3-Clause) names the app
+folder REX_APP_FOLDER, Gears' 0007 names it REX_EXECUTABLE_FOLDER. Honour
+either before falling back to the dladdr() nativeLibraryDir.
+---
+ src/core/filesystem_posix.cpp | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/src/core/filesystem_posix.cpp b/src/core/filesystem_posix.cpp
+index 85a6bcc..9529714 100644
+--- a/src/core/filesystem_posix.cpp
++++ b/src/core/filesystem_posix.cpp
+@@ -121,8 +121,11 @@ std::filesystem::path GetExecutableFolder() {
+   // An app's process image is /system/bin/app_process64; the activity may name
+   // the folder that holds its config and logs, and otherwise the runtime's own
+   // library path (dladdr in GetExecutablePath) gives the nativeLibraryDir.
+-  if (auto dir = rex::platform::env::get("REX_EXECUTABLE_FOLDER")) {
+-    return std::filesystem::path(*dir);
++  // REX_APP_FOLDER is the name the nfsmw SDK port uses for the same thing.
++  for (const char* variable : {"REX_EXECUTABLE_FOLDER", "REX_APP_FOLDER"}) {
++    if (auto dir = rex::platform::env::get(variable); dir && !dir->empty()) {
++      return std::filesystem::path(*dir);
++    }
+   }
+ #endif
+   return GetExecutablePath().parent_path();

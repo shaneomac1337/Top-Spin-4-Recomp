@@ -1,0 +1,115 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:20:35 +1000
+Subject: [PATCH 05/35] ui: add the Android native window surface
+
+vulkan_presenter.cpp already included <rex/ui/surface_android.h> and created
+a VkAndroidSurfaceCreateInfoKHR from AndroidNativeWindowSurface::window(), but
+neither the header nor the implementation existed, so the Vulkan presenter
+could not compile for Android. Add AndroidNativeWindowSurface over an
+ANativeWindow, with the size taken from the window's buffer geometry, and
+select it for ANDROID in src/ui/CMakeLists.txt.
+---
+ include/rex/ui/surface_android.h | 38 ++++++++++++++++++++++++++++++++
+ src/ui/CMakeLists.txt            |  4 ++++
+ src/ui/surface_android.cpp       | 31 ++++++++++++++++++++++++++
+ 3 files changed, 73 insertions(+)
+ create mode 100644 include/rex/ui/surface_android.h
+ create mode 100644 src/ui/surface_android.cpp
+
+diff --git a/include/rex/ui/surface_android.h b/include/rex/ui/surface_android.h
+new file mode 100644
+index 0000000..19567c3
+--- /dev/null
++++ b/include/rex/ui/surface_android.h
+@@ -0,0 +1,38 @@
++#pragma once
++/**
++ ******************************************************************************
++ * Xenia : Xbox 360 Emulator Research Project                                 *
++ ******************************************************************************
++ * Copyright 2021 Ben Vanik. All rights reserved.                             *
++ * Released under the BSD license - see LICENSE in the root for more details. *
++ *
++ * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
++ */
++
++#include <cstdint>
++
++#include <rex/ui/surface.h>
++
++struct ANativeWindow;
++
++namespace rex {
++namespace ui {
++
++// Surface backed by the ANativeWindow SDL's android video driver hands out
++// (SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER), presented with
++// VK_KHR_android_surface.
++class AndroidNativeWindowSurface final : public Surface {
++ public:
++  explicit AndroidNativeWindowSurface(ANativeWindow* window) : window_(window) {}
++  TypeIndex GetType() const override { return kTypeIndex_AndroidNativeWindow; }
++  ANativeWindow* window() const { return window_; }
++
++ protected:
++  bool GetSizeImpl(uint32_t& width_out, uint32_t& height_out) const override;
++
++ private:
++  ANativeWindow* window_;
++};
++
++}  // namespace ui
++}  // namespace rex
+diff --git a/src/ui/CMakeLists.txt b/src/ui/CMakeLists.txt
+index 6af7a70..9dc357a 100644
+--- a/src/ui/CMakeLists.txt
++++ b/src/ui/CMakeLists.txt
+@@ -72,6 +72,10 @@ elseif(APPLE)
+     set(REXUI_PLATFORM_SOURCES
+         surface_mac.cpp
+     )
++elseif(ANDROID)
++    set(REXUI_PLATFORM_SOURCES
++        surface_android.cpp
++    )
+ else()
+     set(REXUI_PLATFORM_SOURCES
+         surface_gnulinux.cpp
+diff --git a/src/ui/surface_android.cpp b/src/ui/surface_android.cpp
+new file mode 100644
+index 0000000..9578a50
+--- /dev/null
++++ b/src/ui/surface_android.cpp
+@@ -0,0 +1,31 @@
++/**
++ ******************************************************************************
++ * Xenia : Xbox 360 Emulator Research Project                                 *
++ ******************************************************************************
++ * Copyright 2021 Ben Vanik. All rights reserved.                             *
++ * Released under the BSD license - see LICENSE in the root for more details. *
++ *
++ * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
++ */
++
++#include <android/native_window.h>
++
++#include <rex/ui/surface_android.h>
++
++namespace rex {
++namespace ui {
++
++bool AndroidNativeWindowSurface::GetSizeImpl(uint32_t& width_out, uint32_t& height_out) const {
++  // The buffer size, not the window rect: it is what the swapchain must match.
++  int32_t width = ANativeWindow_getWidth(window_);
++  int32_t height = ANativeWindow_getHeight(window_);
++  if (width <= 0 || height <= 0) {
++    return false;
++  }
++  width_out = uint32_t(width);
++  height_out = uint32_t(height);
++  return true;
++}
++
++}  // namespace ui
++}  // namespace rex

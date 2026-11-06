@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:21:53 +1000
+Subject: [PATCH 09/35] cmake: do not install the host recompiler when it was
+ not built
+
+The install rules named the rexglue executable unconditionally, so an Android
+configure failed with 'install TARGETS given target rexglue which does not
+exist' after the tool was excluded from the cross build.
+---
+ cmake/rexglue_install.cmake | 13 ++++++++-----
+ 1 file changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/cmake/rexglue_install.cmake b/cmake/rexglue_install.cmake
+index d9a64eb..7a3df0b 100644
+--- a/cmake/rexglue_install.cmake
++++ b/cmake/rexglue_install.cmake
+@@ -52,11 +52,14 @@ install(TARGETS ${REXGLUE_INSTALL_TARGETS}
+ )
+ 
+ # A Debug codegen tool runs an order of magnitude slower, so only Release ships.
+-install(TARGETS rexglue
+-    EXPORT rexglueTargets
+-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+-    CONFIGURATIONS Release
+-)
++# The tool is host-only and is not built when cross-compiling for Android.
++if(TARGET rexglue)
++    install(TARGETS rexglue
++        EXPORT rexglueTargets
++        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
++        CONFIGURATIONS Release
++    )
++endif()
+ 
+ if(REXGLUE_INSTALL_FIDELITYFX_TARGETS)
+     install(TARGETS ${REXGLUE_INSTALL_FIDELITYFX_TARGETS}

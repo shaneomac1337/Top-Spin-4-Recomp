@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:29:52 +1000
+Subject: [PATCH 15/35] cmake(core): do not link libpthread on Android
+
+The NDK has no libpthread stub (the symbols are in libc), so the runtime
+failed to link with 'unable to find library -lpthread'. Link dl and android
+only.
+---
+ src/core/CMakeLists.txt | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/src/core/CMakeLists.txt b/src/core/CMakeLists.txt
+index a288c67..7079316 100644
+--- a/src/core/CMakeLists.txt
++++ b/src/core/CMakeLists.txt
+@@ -105,9 +105,10 @@ target_include_directories(rexcore PRIVATE
+ if(APPLE)
+     target_link_libraries(rexcore PRIVATE pthread)
+ elseif(ANDROID)
+-    # bionic has pthread, rt and dl in libc; there is no librt to link.
+-    # libandroid provides android_get_device_api_level.
+-    target_link_libraries(rexcore PRIVATE pthread dl android)
++    # bionic has pthread, rt and dl in libc, and the NDK ships no libpthread or
++    # librt stub to link against. libandroid provides
++    # android_get_device_api_level.
++    target_link_libraries(rexcore PRIVATE dl android)
+ elseif(UNIX)
+     target_link_libraries(rexcore PRIVATE pthread rt dl)
+ endif()

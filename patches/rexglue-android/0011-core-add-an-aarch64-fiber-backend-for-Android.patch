@@ -1,0 +1,215 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:25:43 +1000
+Subject: [PATCH 11/35] core: add an aarch64 fiber backend for Android
+
+Bionic has no getcontext/makecontext/swapcontext on 64-bit, so fiber_posix.cpp
+did not compile for Android, and the kernel's guest threads (xthread.cpp,
+kernel/crt/threading.cpp) are built on Fiber. Save the AAPCS64 callee-saved
+registers (x19-x28, x29, x30, d8-d15) on the current stack, swap the stack
+pointer and restore; a new fiber starts with a frame whose x30 is a
+trampoline. fiber_posix.cpp keeps the ucontext path for Linux/macOS.
+---
+ include/rex/thread/fiber.h |  13 ++++
+ src/core/CMakeLists.txt    |   4 ++
+ src/core/fiber_android.cpp | 124 +++++++++++++++++++++++++++++++++++++
+ src/core/fiber_posix.cpp   |   4 +-
+ 4 files changed, 143 insertions(+), 2 deletions(-)
+ create mode 100644 src/core/fiber_android.cpp
+
+diff --git a/include/rex/thread/fiber.h b/include/rex/thread/fiber.h
+index 352af67..8cae622 100644
+--- a/include/rex/thread/fiber.h
++++ b/include/rex/thread/fiber.h
+@@ -20,7 +20,11 @@
+ // before including <ucontext.h>.
+ #define _XOPEN_SOURCE 700
+ #endif
++// Bionic (Android) has no ucontext at all on 64-bit; fiber_android.cpp
++// switches contexts with aarch64 assembly instead.
++#if !REX_PLATFORM_ANDROID
+ #include <ucontext.h>
++#endif
+ #include <cstdint>
+ #include <vector>
+ #endif
+@@ -56,6 +60,15 @@ struct Fiber {
+ #if REX_PLATFORM_WIN32
+   void* handle_ = nullptr;
+   bool is_thread_fiber_ = false;
++#elif REX_PLATFORM_ANDROID
++  // Stack pointer of the suspended context; see fiber_android.cpp.
++  uintptr_t sp_ = 0;
++  std::vector<uint8_t> stack_;
++  void (*entry_)(void*) = nullptr;
++  void* arg_ = nullptr;
++  bool is_thread_fiber_ = false;
++
++  static void Trampoline();
+ #elif REX_PLATFORM_LINUX || REX_PLATFORM_MAC
+   ucontext_t context_{};
+   std::vector<uint8_t> stack_;
+diff --git a/src/core/CMakeLists.txt b/src/core/CMakeLists.txt
+index 1443d54..8823e38 100644
+--- a/src/core/CMakeLists.txt
++++ b/src/core/CMakeLists.txt
+@@ -74,6 +74,10 @@ elseif(UNIX)
+         system_posix.cpp
+         threading_posix.cpp
+     )
++    if(ANDROID)
++        # Bionic has no ucontext on 64-bit; the switch is aarch64 assembly.
++        target_sources(rexcore PRIVATE fiber_android.cpp)
++    endif()
+ endif()
+ 
+ # Xenos data-format layer (stateless; headers under include/rex/graphics/).
+diff --git a/src/core/fiber_android.cpp b/src/core/fiber_android.cpp
+new file mode 100644
+index 0000000..41116df
+--- /dev/null
++++ b/src/core/fiber_android.cpp
+@@ -0,0 +1,124 @@
++/**
++ * @file        rex/core/fiber_android.cpp
++ * @brief       Android backend for rex::thread::Fiber (aarch64 context switch)
++ *
++ * @copyright   Copyright (c) 2026 Tom Clay <tomc@tctechstuff.com>
++ *              All rights reserved.
++ *
++ * @license     BSD 3-Clause License
++ *              See LICENSE file in the project root for full license text.
++ */
++
++#include <rex/platform.h>
++#if REX_PLATFORM_ANDROID
++
++#include <rex/thread/fiber.h>
++
++#include <cassert>
++#include <cstdint>
++#include <cstring>
++
++// Bionic provides no getcontext/makecontext/swapcontext on 64-bit, so the
++// context switch is done directly: save the callee-saved half of the register
++// file on the current stack, swap the stack pointer, restore.
++//
++// The saved frame is 160 bytes, in this order:
++//   x19,x20  x21,x22  x23,x24  x25,x26  x27,x28  x29,x30  d8,d9 ...
++//   ... d10,d11  d12,d13  d14,d15
++// That is every register the AAPCS64 makes callee-saved, so a switch is
++// transparent to the compiler. sp is 16-byte aligned throughout, as required.
++
++namespace rex::thread {
++namespace {
++
++constexpr uintptr_t kFrameSize = 160;
++constexpr uintptr_t kLrOffset = 88;  // x30, second half of the x29/x30 pair.
++
++}  // namespace
++
++extern "C" __attribute__((naked)) void rex_android_fiber_switch(void** save_sp,
++                                                               void* restore_sp) {
++  __asm__ volatile(
++      "sub  sp, sp, #160\n"
++      "stp  x19, x20, [sp, #0]\n"
++      "stp  x21, x22, [sp, #16]\n"
++      "stp  x23, x24, [sp, #32]\n"
++      "stp  x25, x26, [sp, #48]\n"
++      "stp  x27, x28, [sp, #64]\n"
++      "stp  x29, x30, [sp, #80]\n"
++      "stp  d8,  d9,  [sp, #96]\n"
++      "stp  d10, d11, [sp, #112]\n"
++      "stp  d12, d13, [sp, #128]\n"
++      "stp  d14, d15, [sp, #144]\n"
++      "mov  x2, sp\n"
++      "str  x2, [x0]\n"
++      "mov  sp, x1\n"
++      "ldp  x19, x20, [sp, #0]\n"
++      "ldp  x21, x22, [sp, #16]\n"
++      "ldp  x23, x24, [sp, #32]\n"
++      "ldp  x25, x26, [sp, #48]\n"
++      "ldp  x27, x28, [sp, #64]\n"
++      "ldp  x29, x30, [sp, #80]\n"
++      "ldp  d8,  d9,  [sp, #96]\n"
++      "ldp  d10, d11, [sp, #112]\n"
++      "ldp  d12, d13, [sp, #128]\n"
++      "ldp  d14, d15, [sp, #144]\n"
++      "add  sp, sp, #160\n"
++      "ret\n");
++}
++
++thread_local Fiber* Fiber::tls_current_ = nullptr;
++
++Fiber* Fiber::ConvertCurrentThread() {
++  auto* f = new Fiber();
++  f->is_thread_fiber_ = true;
++  tls_current_ = f;
++  return f;
++}
++
++Fiber* Fiber::Create(size_t stack_size, void (*entry)(void*), void* arg) {
++  auto* f = new Fiber();
++  f->entry_ = entry;
++  f->arg_ = arg;
++  // The extra 16 bytes let the top be aligned down without losing stack.
++  f->stack_.resize(stack_size + 16);
++
++  uintptr_t top = (reinterpret_cast<uintptr_t>(f->stack_.data()) + f->stack_.size()) &
++                  ~uintptr_t(15);
++  auto* frame = reinterpret_cast<uint8_t*>(top - kFrameSize);
++  std::memset(frame, 0, kFrameSize);
++  // First switch "returns" into Trampoline; it reads the fiber from
++  // tls_current_, which SwitchTo sets before switching.
++  uintptr_t trampoline = reinterpret_cast<uintptr_t>(&Fiber::Trampoline);
++  std::memcpy(frame + kLrOffset, &trampoline, sizeof(trampoline));
++  f->sp_ = reinterpret_cast<uintptr_t>(frame);
++  return f;
++}
++
++void Fiber::Trampoline() {
++  Fiber* f = tls_current_;
++  f->entry_(f->arg_);
++  // Guest threads end by exiting through the kernel, never by returning.
++  assert(false && "fiber entry returned");
++  __builtin_trap();
++}
++
++void Fiber::SwitchTo(Fiber* target) {
++  Fiber* from = tls_current_;
++  tls_current_ = target;
++  rex_android_fiber_switch(&from->sp_, reinterpret_cast<void*>(target->sp_));
++}
++
++void Fiber::Destroy() {
++  // Thread fibers are destroyed from the owning thread itself.
++  if (is_thread_fiber_) {
++    tls_current_ = nullptr;
++  } else {
++    assert(this != tls_current_ && "Destroy called on the currently running fiber");
++  }
++  delete this;
++}
++
++}  // namespace rex::thread
++
++#endif  // REX_PLATFORM_ANDROID
+diff --git a/src/core/fiber_posix.cpp b/src/core/fiber_posix.cpp
+index 4fe1ca6..f086977 100644
+--- a/src/core/fiber_posix.cpp
++++ b/src/core/fiber_posix.cpp
+@@ -17,7 +17,7 @@
+ #endif
+ 
+ #include <rex/platform.h>
+-#if REX_PLATFORM_LINUX || REX_PLATFORM_MAC
++#if (REX_PLATFORM_LINUX || REX_PLATFORM_MAC) && !REX_PLATFORM_ANDROID
+ 
+ #include <rex/thread/fiber.h>
+ 
+@@ -81,4 +81,4 @@ void Fiber::Destroy() {
+ 
+ }  // namespace rex::thread
+ 
+-#endif  // REX_PLATFORM_LINUX || REX_PLATFORM_MAC
++#endif  // (REX_PLATFORM_LINUX || REX_PLATFORM_MAC) && !REX_PLATFORM_ANDROID

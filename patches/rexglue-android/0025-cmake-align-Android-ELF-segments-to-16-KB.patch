@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:51:18 +1000
+Subject: [PATCH 25/35] cmake: align Android ELF segments to 16 KB
+
+Android 15 devices can use 16 KB pages, and the loader then refuses segments
+aligned to 4 KB. -Wl,-z,max-page-size=16384 produces binaries that work on
+both; from codepdbh/nfsmw-android sdk/ (BSD-3-Clause), CMakeLists.txt.
+---
+ CMakeLists.txt | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 38daaac..a9b70b2 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -174,6 +174,10 @@ elseif(ANDROID)
+     endif()
+     # include/rex/platform.h sets REX_PLATFORM_ANDROID (and REX_PLATFORM_LINUX)
+     # from __ANDROID__; nothing is added here so the two cannot disagree.
++    # 16 KB page-size devices (Android 15+): align ELF segments so the same
++    # libraries load on 4 KB and 16 KB kernels. Consumers linking the SDK as a
++    # subdirectory should set this for their own targets as well.
++    add_link_options("-Wl,-z,max-page-size=16384")
+ elseif(UNIX AND NOT APPLE)
+     if(REX_TARGET_PROCESSOR MATCHES "AMD64|x86_64")
+         set(REX_PLATFORM "linux-amd64")

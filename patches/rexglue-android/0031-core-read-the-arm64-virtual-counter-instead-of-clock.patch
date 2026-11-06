@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ts4-port <ts4-port@localhost>
+Date: Wed, 4 Nov 2026 03:05:16 +1000
+Subject: [PATCH 31/35] core: read the arm64 virtual counter instead of
+ clock_gettime; throttle the CP heartbeat
+
+- Clock::host_tick_count_platform() called clock_gettime(CLOCK_MONOTONIC_RAW) on
+  every tick query. On aarch64 read cntvct_el0/cntfrq_el0 instead: a register
+  read, same monotonic source, no vdso call. The guest polls the performance
+  counter often enough that __kernel_clock_gettime was 30% of all cycles in a
+  simpleperf profile.
+- The command-processor idle heartbeat sampled steady_clock::now() on every spin
+  iteration, which is the same vdso call in the hottest loop in the runtime.
+  Sample it once per 512 spins instead.
+
+Measured on device: still a locked 60 fps, renderer 0.42 ms, whole-process CPU
+276% (was 396% at 14 fps before the page-protection and counter fixes).
+---
+ src/core/clock_posix.cpp           | 15 +++++++++++++++
+ src/graphics/command_processor.cpp | 26 ++++++++++++++++----------
+ 2 files changed, 31 insertions(+), 10 deletions(-)
+
+diff --git a/src/core/clock_posix.cpp b/src/core/clock_posix.cpp
+index 00f2382..4454226 100644
+--- a/src/core/clock_posix.cpp
++++ b/src/core/clock_posix.cpp
+@@ -43,6 +43,21 @@ uint64_t Clock::host_tick_count_platform() {
+   // clock_gettime(CLOCK_MONOTONIC_RAW) returns nanoseconds, which would be
+   // inconsistent with the 24 MHz mach frequency and cause ~41x time acceleration.
+   return mach_absolute_time();
++#elif defined(__aarch64__)
++  // The guest polls KeQueryPerformanceCounter heavily (a simpleperf profile of the cinematic put
++  // 30% of all cycles in __kernel_clock_gettime). The virtual counter is a register read, so this
++  // costs a couple of cycles instead of a vdso call, and it is the same monotonic source.
++  // host_tick_frequency_platform() reports 1 GHz (1 ns ticks), so convert from the counter rate.
++  uint64_t counter;
++  __asm__ __volatile__("mrs %0, cntvct_el0" : "=r"(counter));
++  static const uint64_t frequency = [] {
++    uint64_t value;
++    __asm__ __volatile__("mrs %0, cntfrq_el0" : "=r"(value));
++    return value ? value : 1;
++  }();
++  // Split the conversion so counter * 1e9 cannot overflow.
++  return (counter / frequency) * 1000000000ull +
++         (counter % frequency) * 1000000000ull / frequency;
+ #else
+   timespec tp;
+   int error = clock_gettime(CLOCK_MONOTONIC_RAW, &tp);
+diff --git a/src/graphics/command_processor.cpp b/src/graphics/command_processor.cpp
+index b621383..8f7db94 100644
+--- a/src/graphics/command_processor.cpp
++++ b/src/graphics/command_processor.cpp
+@@ -255,17 +255,23 @@ void CommandProcessor::WorkerThreadMain() {
+     if (write_ptr_index == 0xBAADF00D || read_ptr_index_ == write_ptr_index) {
+       SCOPE_profile_cpu_i("gpu", "rex::graphics::CommandProcessor::Stall");
+       // Bring-up heartbeat: if the guest spins on a loading screen, this says whether it is even
+-      // submitting work (wptr_updates) and where the read pointer sits.
++      // submitting work (wptr_updates) and where the read pointer sits. Only sample the clock
++      // every 512 spins: the worker is a hot spin loop, and an unthrottled now() here showed up as
++      // 29% of all cycles in __kernel_clock_gettime.
+       static std::atomic<int64_t> last_heartbeat_ns{0};
+-      const int64_t now_ns =
+-          std::chrono::duration_cast<std::chrono::nanoseconds>(
+-              std::chrono::steady_clock::now().time_since_epoch())
+-              .count();
+-      int64_t last_ns = last_heartbeat_ns.load(std::memory_order_relaxed);
+-      if (now_ns - last_ns > 1000000000ll &&
+-          last_heartbeat_ns.compare_exchange_strong(last_ns, now_ns, std::memory_order_relaxed)) {
+-        REXGPU_INFO("CP idle: read={:08X} write={:08X} wptr_updates={}", read_ptr_index_,
+-                    write_ptr_index, wptr_update_count_.load(std::memory_order_relaxed));
++      static uint32_t heartbeat_ticks = 0;
++      if ((++heartbeat_ticks & 511) == 0) {
++        const int64_t now_ns =
++            std::chrono::duration_cast<std::chrono::nanoseconds>(
++                std::chrono::steady_clock::now().time_since_epoch())
++                .count();
++        int64_t last_ns = last_heartbeat_ns.load(std::memory_order_relaxed);
++        if (now_ns - last_ns > 1000000000ll &&
++            last_heartbeat_ns.compare_exchange_strong(last_ns, now_ns,
++                                                      std::memory_order_relaxed)) {
++          REXGPU_INFO("CP idle: read={:08X} write={:08X} wptr_updates={}", read_ptr_index_,
++                      write_ptr_index, wptr_update_count_.load(std::memory_order_relaxed));
++        }
+       }
+       // We've run out of commands to execute.
+       // We spin here waiting for new ones, as the overhead of waiting on our

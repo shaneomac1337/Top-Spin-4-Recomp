@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <191880570+hjcoggan@users.noreply.github.com>
+Date: Fri, 6 Nov 2026 12:21:01 +1000
+Subject: [PATCH 35/35] build: stop rewriting the version header on every
+ configure
+
+include/rex/version.h embedded a configure-time timestamp with minute
+resolution, so every re-configure (any CMakeLists edit, or Gradle re-running
+CMake) rewrote it and invalidated every translation unit that includes it: a
+one-line change cost a full rebuild of the SDK and of the recompiled game
+modules, ~10 minutes here. Take the timestamp from the SDK tree's last commit
+instead. Verified: the header is now identical across re-configures, and
+touching one source rebuilds 5 steps instead of 567.
+---
+ CMakeLists.txt | 15 +++++++++++++--
+ 1 file changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index a9b70b2..f0f9c72 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -234,8 +234,19 @@ set(REXGLUE_FLOOR_VERSION
+ rex_version_channel(REXGLUE_VERSION_CHANNEL VERSION "${REXGLUE_FULL_VERSION}")
+ 
+ # Generate version header -- must run after REX_PLATFORM is set
+-# Timestamp is set at configure time -- intentionally not updated on every rebuild
+-string(TIMESTAMP REXGLUE_BUILD_TIMESTAMP "%Y%m%d_%H%M")
++# A configure-time timestamp rewrote this header on every re-configure, which invalidated every
++# translation unit that includes it: a one-line CMakeLists edit cost a full rebuild of the SDK and
++# of the recompiled game modules. Take the timestamp from the source tree's last commit instead --
++# it changes when the SDK does, which is when a rebuild is expected anyway. Set the variable to
++# pin it (the reproducible-builds SOURCE_DATE_EPOCH route works too, via a caller).
++if(NOT DEFINED REXGLUE_BUILD_TIMESTAMP)
++    execute_process(COMMAND git log -1 --format=%cd --date=format:%Y%m%d_%H%M
++        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
++        OUTPUT_VARIABLE REXGLUE_BUILD_TIMESTAMP OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
++    if(NOT REXGLUE_BUILD_TIMESTAMP)
++        string(TIMESTAMP REXGLUE_BUILD_TIMESTAMP "%Y%m%d_%H%M")
++    endif()
++endif()
+ configure_file(
+     ${CMAKE_CURRENT_SOURCE_DIR}/include/rex/version.h.in
+     ${CMAKE_CURRENT_BINARY_DIR}/include/rex/version.h

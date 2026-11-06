@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:51:04 +1000
+Subject: [PATCH 23/35] android: load the GPU plugin by soname (nfsmw sdk)
+
+From codepdbh/nfsmw-android sdk/ (BSD-3-Clause), src/system/gpu_plugin_loader.cpp;
+the same change is in Gears' 0007.
+
+Android installs native libraries into the app's linker namespace, so the
+absolute path built from GetExecutableFolder() cannot be opened. Load
+librexgpu-xenos.so by soname and let bionic search the app's nativeLibraryDir.
+---
+ src/system/gpu_plugin_loader.cpp | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/src/system/gpu_plugin_loader.cpp b/src/system/gpu_plugin_loader.cpp
+index 754fa13..49d10cd 100644
+--- a/src/system/gpu_plugin_loader.cpp
++++ b/src/system/gpu_plugin_loader.cpp
+@@ -55,7 +55,15 @@ std::vector<platform::DynamicLibrary>& LoadedPlugins() {
+ }  // namespace
+ 
+ std::unique_ptr<IGraphicsSystem> LoadGpuPlugin(std::string_view name, std::string_view backend) {
++#if REX_PLATFORM_ANDROID
++  // Android installs native libraries in the app's linker namespace, while
++  // /proc/self/exe resolves to /system/bin/app_process64. Load by soname so
++  // bionic searches the app's nativeLibraryDir for the packaged plugin.
++  auto path = std::filesystem::path(PluginFileName(name));
++#else
+   auto path = rex::filesystem::GetExecutableFolder() / PluginFileName(name);
++#endif
++#if !REX_PLATFORM_ANDROID
+   if (!std::filesystem::exists(path)) {
+     REXSYS_ERROR(
+         "GPU plugin '{}' not found at {}. Stage it next to the executable "
+@@ -63,6 +71,7 @@ std::unique_ptr<IGraphicsSystem> LoadGpuPlugin(std::string_view name, std::strin
+         name, path.string(), name);
+     return nullptr;
+   }
++#endif
+ 
+   platform::DynamicLibrary library;
+   if (!library.Load(path, platform::SymbolResolution::kImmediate)) {

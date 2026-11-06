@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:35:14 +1000
+Subject: [PATCH 18/35] cmake: do not cross-compile the code generator on
+ Android
+
+src/codegen is only linked by the host rexglue CLI: it turns guest PPC into
+C++ on the build machine. Building it for Android produced a 112 MB static
+library nothing on the device uses. Skip it together with src/rexglue and keep
+its export name conditional.
+---
+ CMakeLists.txt              | 8 +++++---
+ cmake/rexglue_install.cmake | 4 +++-
+ 2 files changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index a51babd..38daaac 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -275,10 +275,12 @@ add_subdirectory(src/audio)
+ add_subdirectory(src/graphics)
+ add_subdirectory(src/system)
+ add_subdirectory(src/kernel)
+-add_subdirectory(src/codegen)
+-# src/rexglue is the host recompiler CLI; it runs on the build machine, not on
+-# the target, so it is not cross-compiled for Android.
++# src/codegen is the recompiler's code generator and src/rexglue its CLI. Both
++# run on the build machine, not on the target, so neither is cross-compiled for
++# Android (which also keeps the ~100 MB static codegen library out of the
++# build).
+ if(NOT ANDROID)
++    add_subdirectory(src/codegen)
+     add_subdirectory(src/rexglue)
+ endif()
+ 
+diff --git a/cmake/rexglue_install.cmake b/cmake/rexglue_install.cmake
+index 7a3df0b..9f50bab 100644
+--- a/cmake/rexglue_install.cmake
++++ b/cmake/rexglue_install.cmake
+@@ -7,7 +7,9 @@ set_target_properties(rexui PROPERTIES EXPORT_NAME ui)
+ set_target_properties(rexinput PROPERTIES EXPORT_NAME input)
+ set_target_properties(rexaudio PROPERTIES EXPORT_NAME audio)
+ set_target_properties(rexruntime PROPERTIES EXPORT_NAME runtime)
+-set_target_properties(rexcodegen PROPERTIES EXPORT_NAME codegen)
++if(TARGET rexcodegen)
++    set_target_properties(rexcodegen PROPERTIES EXPORT_NAME codegen)
++endif()
+ 
+ include(${CMAKE_CURRENT_LIST_DIR}/rexglue_helpers.cmake)
+ 

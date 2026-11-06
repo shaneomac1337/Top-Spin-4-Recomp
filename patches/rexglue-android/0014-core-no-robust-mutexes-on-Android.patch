@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:28:26 +1000
+Subject: [PATCH 14/35] core: no robust mutexes on Android
+
+PosixConditionBase and its multi-wait path switched std::mutex to a
+PTHREAD_MUTEX_ROBUST mutex on every Linux target. Bionic has neither
+PTHREAD_MUTEX_ROBUST nor pthread_mutex_consistent, so keep the plain
+std::mutex there and take the same path macOS already takes.
+---
+ src/core/fiber_android.cpp   | 3 ++-
+ src/core/threading_posix.cpp | 8 +++++---
+ 2 files changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/src/core/fiber_android.cpp b/src/core/fiber_android.cpp
+index 41116df..3767621 100644
+--- a/src/core/fiber_android.cpp
++++ b/src/core/fiber_android.cpp
+@@ -106,7 +106,8 @@ void Fiber::Trampoline() {
+ void Fiber::SwitchTo(Fiber* target) {
+   Fiber* from = tls_current_;
+   tls_current_ = target;
+-  rex_android_fiber_switch(&from->sp_, reinterpret_cast<void*>(target->sp_));
++  rex_android_fiber_switch(reinterpret_cast<void**>(&from->sp_),
++                          reinterpret_cast<void*>(target->sp_));
+ }
+ 
+ void Fiber::Destroy() {
+diff --git a/src/core/threading_posix.cpp b/src/core/threading_posix.cpp
+index 86df2c9..ee052de 100644
+--- a/src/core/threading_posix.cpp
++++ b/src/core/threading_posix.cpp
+@@ -283,8 +283,10 @@ static sem_t* RexCreateAnonymousSemaphore() {
+ class PosixConditionBase {
+  public:
+   PosixConditionBase() {
+-#if REX_PLATFORM_LINUX
++#if REX_PLATFORM_LINUX && !REX_PLATFORM_ANDROID
+     // Use robust mutexes so waits can recover if owner thread terminates.
++    // Bionic has no robust mutexes (no PTHREAD_MUTEX_ROBUST), so Android uses
++    // a plain std::mutex.
+     pthread_mutexattr_t attr;
+     if (pthread_mutexattr_init(&attr) == 0) {
+       if (pthread_mutexattr_setrobust(&attr, PTHREAD_MUTEX_ROBUST) == 0) {
+@@ -303,7 +305,7 @@ class PosixConditionBase {
+   WaitResult Wait(std::chrono::milliseconds timeout) {
+     bool executed;
+     auto predicate = [this] { return this->signaled(); };
+-#if REX_PLATFORM_LINUX
++#if REX_PLATFORM_LINUX && !REX_PLATFORM_ANDROID
+     auto native_mutex = static_cast<pthread_mutex_t*>(mutex_.native_handle());
+     int lock_result = pthread_mutex_lock(native_mutex);
+     if (lock_result == EOWNERDEAD) {
+@@ -357,7 +359,7 @@ class PosixConditionBase {
+       locks.reserve(handles.size());
+ 
+       for (size_t i = 0; i < handles.size(); ++i) {
+-#if REX_PLATFORM_LINUX
++#if REX_PLATFORM_LINUX && !REX_PLATFORM_ANDROID
+         auto native_mutex = static_cast<pthread_mutex_t*>(handles[i]->mutex_.native_handle());
+         int result = pthread_mutex_trylock(native_mutex);
+         if (result == 0 || result == EOWNERDEAD) {

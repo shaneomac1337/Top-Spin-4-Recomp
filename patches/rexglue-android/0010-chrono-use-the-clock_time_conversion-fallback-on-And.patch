@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:23:45 +1000
+Subject: [PATCH 10/35] chrono: use the clock_time_conversion fallback on
+ Android too
+
+libc++ on Android (NDK r30) does not declare std::chrono::clock_time_conversion
+or clock_cast, exactly like Apple's libc++, so the explicit specialisations in
+chrono.h and chrono_steady_cast.h were rejected as specialisations of an
+undeclared template. Select the same fallback for __ANDROID__.
+---
+ include/rex/chrono/chrono.h | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/include/rex/chrono/chrono.h b/include/rex/chrono/chrono.h
+index d876846..3c80b05 100644
+--- a/include/rex/chrono/chrono.h
++++ b/include/rex/chrono/chrono.h
+@@ -116,8 +116,9 @@ using XSystemClock = detail::NtSystemClock<detail::Domain::Guest>;
+ 
+ namespace std::chrono {
+ 
+-#ifdef __APPLE__
+-// Apple libc++ does not expose clock_time_conversion or clock_cast.
++#if defined(__APPLE__) || defined(__ANDROID__)
++// Apple's and Android's libc++ builds do not expose clock_time_conversion or
++// clock_cast.
+ template <class, class>
+ struct clock_time_conversion {};
+ 

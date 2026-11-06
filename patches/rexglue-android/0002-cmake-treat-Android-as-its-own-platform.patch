@@ -1,0 +1,49 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:19:15 +1000
+Subject: [PATCH 02/35] cmake: treat Android as its own platform
+
+ANDROID implies UNIX, so the tree fell into the GNU/Linux branch and
+configured as linux-arm64 with REX_PLATFORM_LINUX=1. Add an ANDROID branch
+ahead of it: REX_PLATFORM=android-arm64 (its own output directory), no
+REX_PLATFORM_LINUX from CMake (include/rex/platform.h derives it from
+__ANDROID__), and Tracy off by default since its capture tool is a desktop
+program.
+---
+ CMakeLists.txt | 16 +++++++++++++++-
+ 1 file changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 9d4ae96..f19c37f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -23,7 +23,13 @@ endif()
+ option(REXGLUE_BUILD_TESTS       "Build PPC instruction and unit tests" OFF)
+ option(REXGLUE_ENABLE_SANITIZERS "Enable UndefinedBehaviorSanitizer" OFF)
+ option(REXGLUE_ENABLE_FIDELITYFX "Enable optional AMD FidelityFX integration (experimental)" OFF)
+-option(REXGLUE_ENABLE_TRACY                "Enable Tracy profiler integration" ON)
++if(ANDROID)
++    # The profiler needs a desktop capture tool and costs size/perf on a handheld.
++    set(REXGLUE_TRACY_DEFAULT OFF)
++else()
++    set(REXGLUE_TRACY_DEFAULT ON)
++endif()
++option(REXGLUE_ENABLE_TRACY                "Enable Tracy profiler integration" ${REXGLUE_TRACY_DEFAULT})
+ option(REXGLUE_ENABLE_PERF_COUNTERS        "Enable lightweight perf counter registry and overlay" ON)
+ # Propagate profiling defines globally (compiled out in Release)
+ if(REXGLUE_ENABLE_TRACY)
+@@ -160,6 +166,14 @@ if(WIN32)
+         message(FATAL_ERROR "Unsupported Windows architecture: ${REX_TARGET_PROCESSOR}")
+     endif()
+     add_compile_definitions(REX_PLATFORM_WINDOWS=1)
++elseif(ANDROID)
++    if(REX_TARGET_PROCESSOR MATCHES "aarch64|ARM64|arm64")
++        set(REX_PLATFORM "android-arm64")
++    else()
++        set(REX_PLATFORM "android-${REX_TARGET_PROCESSOR}")
++    endif()
++    # include/rex/platform.h sets REX_PLATFORM_ANDROID (and REX_PLATFORM_LINUX)
++    # from __ANDROID__; nothing is added here so the two cannot disagree.
+ elseif(UNIX AND NOT APPLE)
+     if(REX_TARGET_PROCESSOR MATCHES "AMD64|x86_64")
+         set(REX_PLATFORM "linux-amd64")

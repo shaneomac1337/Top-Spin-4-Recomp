@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ts4-port <ts4-port@localhost>
+Date: Wed, 4 Nov 2026 01:17:02 +1000
+Subject: [PATCH 29/35] video: report exactly-4:3 modes as non-widescreen
+
+VdQueryVideoMode used 'width * 3 >= height * 4', so a 4:3 mode (1280x960,
+960x720) was reported as widescreen. Top Spin 4 then kept rendering 16:9 and
+the presenter letterboxed it, leaving black bars on the Nova's 4:3 panel.
+
+Strict '>' keeps 16:9 (and 16:10) widescreen and reports 4:3 as 4:3 so titles
+pick their own 4:3 layout. Verified on device: the frame fills 1280x960.
+---
+ src/kernel/xboxkrnl/xboxkrnl_video.cpp | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/kernel/xboxkrnl/xboxkrnl_video.cpp b/src/kernel/xboxkrnl/xboxkrnl_video.cpp
+index abed8e8..e1a9247 100644
+--- a/src/kernel/xboxkrnl/xboxkrnl_video.cpp
++++ b/src/kernel/xboxkrnl/xboxkrnl_video.cpp
+@@ -265,7 +265,9 @@ void VdQueryVideoMode(X_VIDEO_MODE* video_mode) {
+   video_mode->display_width = display_width;
+   video_mode->display_height = display_height;
+   video_mode->is_interlaced = 0;
+-  video_mode->is_widescreen = display_width * 3 >= display_height * 4;
++  // Widescreen means wider than 4:3. Using >= here reported exactly-4:3 modes (1280x960,
++  // 960x720) as widescreen, so titles kept rendering 16:9 and the presenter letterboxed it.
++  video_mode->is_widescreen = display_width * 3 > display_height * 4;
+   video_mode->is_hi_def = display_width >= 1280 || display_height >= 720;
+   video_mode->refresh_rate = refresh_rate_hz;
+   video_mode->video_standard = 1;  // NTSC

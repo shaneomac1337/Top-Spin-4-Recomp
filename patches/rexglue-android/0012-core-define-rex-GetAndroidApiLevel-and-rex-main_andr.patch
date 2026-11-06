@@ -1,0 +1,119 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: hjcoggan <hjcoggan2@gmail.com>
+Date: Tue, 3 Nov 2026 18:26:58 +1000
+Subject: [PATCH 12/35] core: define rex::GetAndroidApiLevel and
+ rex/main_android.h
+
+src/core/memory_posix.cpp and src/core/threading_posix.cpp both call
+rex::GetAndroidApiLevel() and threading_posix.cpp includes
+<rex/main_android.h>, but neither the header nor the function existed. Define
+the function over android_get_device_api_level() (cached) in
+src/core/main_android.cpp and link libandroid in rexcore.
+---
+ include/rex/main_android.h | 22 ++++++++++++++++++++++
+ src/core/CMakeLists.txt    |  5 +++--
+ src/core/main_android.cpp  | 28 ++++++++++++++++++++++++++++
+ src/core/memory_posix.cpp  |  3 +--
+ 4 files changed, 54 insertions(+), 4 deletions(-)
+ create mode 100644 include/rex/main_android.h
+ create mode 100644 src/core/main_android.cpp
+
+diff --git a/include/rex/main_android.h b/include/rex/main_android.h
+new file mode 100644
+index 0000000..d5eb21c
+--- /dev/null
++++ b/include/rex/main_android.h
+@@ -0,0 +1,22 @@
++#pragma once
++/**
++ ******************************************************************************
++ * Xenia : Xbox 360 Emulator Research Project                                 *
++ ******************************************************************************
++ * Copyright 2020 Ben Vanik. All rights reserved.                             *
++ * Released under the BSD license - see LICENSE in the root for more details. *
++ *
++ * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
++ */
++
++// Helpers shared by the Android builds of the platform layers. Only available
++// when REX_PLATFORM_ANDROID (the declaration is harmless on other targets, the
++// definition only exists there).
++
++namespace rex {
++
++// The device's SDK level (android_get_device_api_level), cached after the
++// first call. Never below the target API level at which the app was built.
++int GetAndroidApiLevel();
++
++}  // namespace rex
+diff --git a/src/core/CMakeLists.txt b/src/core/CMakeLists.txt
+index 8823e38..a288c67 100644
+--- a/src/core/CMakeLists.txt
++++ b/src/core/CMakeLists.txt
+@@ -76,7 +76,7 @@ elseif(UNIX)
+     )
+     if(ANDROID)
+         # Bionic has no ucontext on 64-bit; the switch is aarch64 assembly.
+-        target_sources(rexcore PRIVATE fiber_android.cpp)
++        target_sources(rexcore PRIVATE fiber_android.cpp main_android.cpp)
+     endif()
+ endif()
+ 
+@@ -106,7 +106,8 @@ if(APPLE)
+     target_link_libraries(rexcore PRIVATE pthread)
+ elseif(ANDROID)
+     # bionic has pthread, rt and dl in libc; there is no librt to link.
+-    target_link_libraries(rexcore PRIVATE pthread dl)
++    # libandroid provides android_get_device_api_level.
++    target_link_libraries(rexcore PRIVATE pthread dl android)
+ elseif(UNIX)
+     target_link_libraries(rexcore PRIVATE pthread rt dl)
+ endif()
+diff --git a/src/core/main_android.cpp b/src/core/main_android.cpp
+new file mode 100644
+index 0000000..82e7f6b
+--- /dev/null
++++ b/src/core/main_android.cpp
+@@ -0,0 +1,28 @@
++/**
++ ******************************************************************************
++ * Xenia : Xbox 360 Emulator Research Project                                 *
++ ******************************************************************************
++ * Copyright 2020 Ben Vanik. All rights reserved.                             *
++ * Released under the BSD license - see LICENSE in the root for more details. *
++ *
++ * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
++ */
++
++#include <rex/platform.h>
++
++#if REX_PLATFORM_ANDROID
++
++#include <rex/main_android.h>
++
++#include <android/api-level.h>
++
++namespace rex {
++
++int GetAndroidApiLevel() {
++  static const int api_level = android_get_device_api_level();
++  return api_level;
++}
++
++}  // namespace rex
++
++#endif  // REX_PLATFORM_ANDROID
+diff --git a/src/core/memory_posix.cpp b/src/core/memory_posix.cpp
+index b52bf39..2cdcd55 100644
+--- a/src/core/memory_posix.cpp
++++ b/src/core/memory_posix.cpp
+@@ -53,8 +53,7 @@
+ 
+ #include <linux/ashmem.h>
+ 
+-// TODO(tomc): Android or maybe na. idk
+-// #include "xenia/base/main_android.h"
++#include <rex/main_android.h>
+ #endif
+ 
+ namespace rex {
