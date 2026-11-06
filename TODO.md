@@ -7,8 +7,13 @@ before starting.
 ## Next
 
 - **Issue #3, Steam Deck court graphics.** Doesn't show on the RX 7900 XT: Kiev and Seoul are clean
-  on Native at 2560x1440, and Seoul at `--ts4_native_window_size=1280x800` (2026-11-06). Next: the
-  owner's own Deck under Proton, then the reporter's session log and whether Classic shows it.
+  on Native at 2560x1440, and Seoul at `--ts4_native_window_size=1280x800` (2026-11-06). Seoul also
+  looked right to the owner on a Deck, handheld at 1280x800, GE-Proton11-7, on the `deck-test` build
+  with 0048 and 0049. Kiev and the third clay court are unchecked there. Next: the reporter's session
+  log, launch method (Quiver) and whether Classic shows it.
+- **Steam Deck frame drops.** The same session (about 13 minutes, Native) averaged about 56 fps, with
+  7% of frames logged as hitches at a median of 33 ms and 1,058 in its last minute. The last hitch
+  compiled no pipelines and spent about 3 ms in the renderer. The cause isn't known.
 - **Issue #2, two-GPU laptops.** Asked the reporter for the crash zip and a `REX_VULKAN_DEVICE=1`
   run. The discrete-GPU fix is on `fix/prefer-discrete-gpu`, unconfirmed on a real hybrid laptop.
 - **Intermittent hang entering Swing, one form unexplained.** Patch 0048 fixes the ring race behind
