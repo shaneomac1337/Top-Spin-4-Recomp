@@ -22,9 +22,22 @@ before starting.
   `igvk64` at the first swap, reading `FFFFFFFFFFFFFFFF` in `vkCmdBeginRendering`
   (`deferred_command_buffer.cpp:225`). The call on the stack has one colour attachment and no depth
   or stencil, and looks valid. Driver bug or bad handle is unknown. Patch 0047 moves this player to
-  the NVIDIA, which avoids the crash path but doesn't fix it for Intel-only PCs. Next: the
-  ProBook's HD 520, Classic on the default preset; if it crashes, retry Safe start, then
-  `--vulkan_dynamic_rendering=false`.
+  the NVIDIA, which avoids the crash path but doesn't fix it for Intel-only PCs.
+  Reproduced 2026-11-06 on the owner's ProBook 650 G2 (HD 520 `0x1916`, driver 101.2111, Windows
+  build 26100, `deck-test`). Classic on Safe start crashes about 2 s in with the same call and
+  arguments. `--vulkan_dynamic_rendering=false` crashes in `vkCmdDraw` instead, and
+  `--async_shader_compilation=false` crashes in `vkCmdBeginRendering` again, so neither is the
+  cause. Native ran 5.6 minutes there, Exhibition included (match on the owner's word). The #2
+  UHD 630 survived Classic on Safe start on driver 101.2141. Next: `--vulkan_validation_enabled`
+  on the ProBook, then driver 101.2115.
+- **Visual C++ runtime isn't shipped.** On a PC without it, `topspin4.exe` and
+  `xenosrecomp\XenosRecomp.exe` can't start (`0xC0000135`, seen on the ProBook). The Launcher reports
+  "The game stopped before it had read the shaders" and that Play still works on Classic. Ship the
+  DLLs beside both, or otherwise cover both, and name a missing DLL in that message. Check on a clean
+  PC; the ProBook now has the runtime installed.
+- **2-core CPUs and integrated GPUs.** "Too few processor cores" logs on every thread CPU change
+  below 6 logical CPUs (`xthread.cpp:914`): 44,209 lines in 5.6 minutes on the ProBook. Its cost isn't
+  measured. The default Resolution scale also picked 2x (2560x1440) on the HD 520 and on #5's Intel.
 - **Launcher wording for Native's gate.** "Vulkan could not start on this graphics card"
   (`launcher/src/Launcher.Core/PipelineOutput.cs:84`) also shows when Vulkan works and only Native's
   feature gate refuses the GPU. The #5 reporter read it as no Vulkan support.
