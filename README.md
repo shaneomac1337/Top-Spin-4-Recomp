@@ -21,8 +21,8 @@ refuses anything else.
 | --- | --- |
 | Played and working | Exhibition singles and doubles, Career from the Player Creator on, Top Spin Academy, King of the Court, local multiplayer, saves |
 | My hardware | Windows 11 with an AMD Radeon RX 7900 XT |
-| Also played | Intel HD Graphics 520 (Exhibition, slow) |
-| Not tested yet | NVIDIA GPUs, other Intel GPUs, Windows 10, Steam Deck |
+| Also played | Steam Deck through Proton, Intel HD Graphics 520 (Exhibition, slow) |
+| Not tested yet | NVIDIA GPUs, other Intel GPUs, Windows 10 |
 | Can't run yet | Intel GPUs without the Vulkan feature `shaderInt64`, such as 11th-gen integrated graphics. If the PC also has an NVIDIA or AMD card, the game uses that |
 | Not supported | Online multiplayer. Player Match and World Tour say they're unavailable |
 
@@ -186,7 +186,7 @@ The port is built on the game's final version: the disc's code with Title Update
 applied. Without the update it doesn't run.
 
 **Does it run on Steam Deck or Linux?**
-Not tested yet. A Steam Deck pass through Proton is still to come.
+It runs through Proton (tested with GE-Proton11-7), with some frame drops.
 
 **Was AI used?**
 Yes, a lot. I'm a software engineer, and most of the code and the docs were written with
