@@ -1,7 +1,7 @@
 # Top Spin 4 Recomp. SDK boilerplate lives in cmake/rexglue.cmake.
 
 cmake_minimum_required(VERSION 3.25)
-project(topspin4 VERSION 1.0.0 LANGUAGES C CXX)
+project(topspin4 VERSION 1.0.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
